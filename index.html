@@ -2,34 +2,36 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>极速你画我猜 (地狱难度版)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>极速你画我猜 (稳定连接版)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; display: flex; flex-direction: column; align-items: center; padding: 10px; margin: 0; }
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; display: flex; flex-direction: column; align-items: center; padding: 10px; margin: 0; height: 100vh; overflow: hidden; }
         
         /* 顶部 */
-        header { width: 100%; max-width: 1000px; background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
-        h1 { margin: 0; font-size: 22px; color: #333; }
+        header { width: 100%; max-width: 1000px; background: #fff; padding: 10px 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+        h1 { margin: 0; font-size: 18px; color: #333; display: flex; align-items: center; gap: 5px; }
+        .tag { font-size: 10px; background: #dc3545; color: white; padding: 2px 4px; border-radius: 3px; }
         
         /* 游戏核心区 */
-        #game-container { display: flex; gap: 15px; width: 100%; max-width: 1000px; height: 600px; }
+        #game-container { display: flex; gap: 10px; width: 100%; max-width: 1000px; flex: 1; overflow: hidden; }
         
         /* 左侧画板区 */
-        #left-panel { flex: 2; display: flex; flex-direction: column; gap: 10px; position: relative; }
+        #left-panel { flex: 2; display: flex; flex-direction: column; gap: 10px; position: relative; min-width: 0; }
         
-        #canvas-wrapper { position: relative; flex: 1; background: #fff; border: 2px solid #333; border-radius: 4px; display: flex; justify-content: center; align-items: center; overflow: hidden; }
-        canvas { display: block; touch-action: none; }
+        #canvas-wrapper { position: relative; flex: 1; background: #fff; border: 2px solid #333; border-radius: 4px; display: flex; justify-content: center; align-items: center; overflow: hidden; touch-action: none; }
+        canvas { display: block; touch-action: none; cursor: crosshair; }
         
-        /* 画廊视图 (最后展示用) */
+        /* 画廊视图 */
         #gallery-view { 
             display: none; flex: 1; background: #fff; border-radius: 4px; padding: 10px; 
             flex-wrap: wrap; gap: 10px; justify-content: center; overflow-y: auto; align-content: flex-start;
         }
-        .gallery-item { width: 30%; height: 150px; border: 1px solid #ccc; position: relative; display: flex; flex-direction: column; }
+        .gallery-item { width: 30%; height: 120px; border: 1px solid #ccc; position: relative; display: flex; flex-direction: column; background: #eee; }
         .gallery-item img { width: 100%; height: 100%; object-fit: contain; background: white; }
         .gallery-item .label { position: absolute; top: 0; left: 0; background: #007bff; color: white; padding: 2px 6px; font-size: 12px; }
-        .gallery-item .answer { background: #28a745; color: white; text-align: center; font-weight: bold; padding: 5px; display: none; }
+        .gallery-item .answer { background: #28a745; color: white; text-align: center; font-weight: bold; padding: 5px; display: none; font-size: 12px; }
         .gallery-item.solved .answer { display: block; }
         .gallery-item.solved { border: 2px solid #28a745; }
 
@@ -39,16 +41,16 @@
         #status-overlay { 
             position: absolute; top: 20px; left: 50%; transform: translateX(-50%); 
             background: rgba(0,0,0,0.8); color: white; padding: 10px 20px; 
-            border-radius: 30px; font-size: 20px; font-weight: bold; pointer-events: none; z-index: 20; text-align: center;
-            min-width: 200px;
+            border-radius: 30px; font-size: 18px; font-weight: bold; pointer-events: none; z-index: 20; text-align: center;
+            min-width: 180px; white-space: nowrap;
         }
-        #timer-display { font-size: 40px; color: #ffeb3b; display: block; margin-top: 5px; font-weight: 900; }
+        #timer-display { font-size: 32px; color: #ffeb3b; display: block; margin-top: 5px; font-weight: 900; }
 
         /* 右侧聊天 */
-        #right-panel { flex: 1; display: flex; flex-direction: column; gap: 10px; }
-        #player-list { background: #fff; padding: 10px; border-radius: 8px; min-height: 80px; }
-        .p-card { padding: 5px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; font-size: 14px; }
-        .p-card .role-badge { font-weight: bold; padding: 2px 5px; border-radius: 4px; font-size: 12px; }
+        #right-panel { flex: 1; display: flex; flex-direction: column; gap: 10px; min-width: 250px; }
+        #player-list { background: #fff; padding: 8px; border-radius: 8px; max-height: 150px; overflow-y: auto; font-size: 13px; }
+        .p-card { padding: 4px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+        .role-badge { font-weight: bold; padding: 1px 4px; border-radius: 3px; font-size: 11px; }
         .role-P1 { background: #ffeeba; color: #856404; }
         .role-P2 { background: #d4edda; color: #155724; }
         .role-P3 { background: #cce5ff; color: #004085; }
@@ -56,62 +58,89 @@
 
         #chat-box { flex: 1; background: #fff; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; }
         #messages { flex: 1; overflow-y: auto; padding: 10px; background: #f9f9f9; }
-        .msg { margin-bottom: 6px; font-size: 14px; }
-        .msg.sys { color: #888; text-align: center; font-style: italic; margin: 10px 0; }
+        .msg { margin-bottom: 6px; font-size: 13px; word-break: break-all; }
+        .msg.sys { color: #888; text-align: center; font-style: italic; margin: 8px 0; font-size: 12px; }
         .msg.win { background: #d4edda; color: #155724; padding: 5px; text-align: center; border-radius: 4px; font-weight: bold; }
         
-        #input-area { padding: 10px; display: flex; gap: 5px; border-top: 1px solid #eee; }
-        input[type=text] { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
-        button { padding: 8px 15px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        #input-area { padding: 8px; display: flex; gap: 5px; border-top: 1px solid #eee; }
+        input[type=text] { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; outline: none; }
+        button { padding: 8px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap; }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
 
         /* 连接面板 */
-        #conn-panel { background: #fff; padding: 15px; border-radius: 8px; margin-bottom: 10px; }
+        #conn-panel { background: #fff; padding: 15px; border-radius: 8px; margin-bottom: 10px; width: 100%; max-width: 600px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .conn-row { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+        .conn-divider { width: 100%; height: 1px; background: #eee; margin: 10px 0; }
 
         /* 房主出题弹窗 */
         #host-input-modal { 
             position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); 
             z-index: 100; display: none; justify-content: center; align-items: center; 
         }
-        .modal-content { background: white; padding: 20px; border-radius: 8px; width: 300px; }
+        .modal-content { background: white; padding: 20px; border-radius: 8px; width: 300px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
         .modal-content input { width: 100%; margin-bottom: 10px; box-sizing: border-box; }
         
         select { padding: 8px; border-radius: 4px; border: 1px solid #ddd; }
+
+        /* 移动端适配 */
+        @media (max-width: 768px) {
+            #game-container { flex-direction: column; }
+            #left-panel { flex: 1; height: 50vh; }
+            #right-panel { flex: 1; height: 40vh; min-width: 0; }
+            #canvas-wrapper { min-height: 250px; }
+            .gallery-item { width: 45%; }
+        }
     </style>
 </head>
 <body>
 
 <header>
     <div>
-        <h1>⚡ 极速连画 (地狱难度版)</h1>
-        <div style="font-size:12px; color:#666;">规则: P2连续画5张(每张2秒)，最后所有P3看图抢答</div>
+        <h1>⚡ 极速连画 <span class="tag">地狱版</span></h1>
+        <div style="font-size:12px; color:#666; margin-top:2px;">规则: P2连续画5张(每张2秒)，最后P3抢答</div>
     </div>
-    <div id="my-role-display">等待连接...</div>
+    <div id="my-role-display" style="font-size:14px;">🔴 未连接</div>
 </header>
 
 <div id="conn-panel">
-    <div id="setup-box">
-        <label>昵称:</label> <input type="text" id="nickname" value="玩家" style="width:80px">
-        
-        <!-- 角色选择下拉框 -->
+    <!-- 第一行：通用设置 -->
+    <div class="conn-row">
+        <label>我的昵称:</label> 
+        <input type="text" id="nickname" value="玩家1" style="width:100px">
         <select id="role-select">
-            <option value="P2">我想当: 画手 (P2 - 限1人)</option>
-            <option value="P3">我想当: 猜题 (P3 - 不限人数)</option>
-            <option value="OBS">观众</option>
+            <option value="P2">我想当: 画手 (P2)</option>
+            <option value="P3" selected>我想当: 猜题 (P3)</option>
+            <option value="OBS">仅围观</option>
         </select>
-
-        <button onclick="createRoom()" style="background:#6c757d;">我是房主(P1 出题)</button>
-        <div style="margin: 10px 0; border-top:1px dashed #ccc;"></div>
-        <input type="text" id="host-id" placeholder="输入房主ID">
-        <button onclick="joinRoom()">加入房间</button>
     </div>
-    <div id="id-info" style="margin-top:5px; color:#007bff; font-weight:bold;"></div>
+
+    <div class="conn-divider"></div>
+
+    <!-- 第二行：创建或加入 -->
+    <div id="setup-box">
+        <div class="conn-row" style="justify-content: space-between;">
+            <div style="flex:1; display:flex; gap:5px; align-items:center;">
+                <label>房间号:</label>
+                <input type="text" id="room-id-input" placeholder="例如: 888" style="width:100px; font-weight:bold;">
+                <span style="font-size:12px; color:#888;">(数字/字母)</span>
+            </div>
+        </div>
+        <div class="conn-row" style="margin-top:15px; justify-content: center; gap: 20px;">
+            <button onclick="createRoom()" style="background:#28a745; padding: 10px 20px; font-size:16px;">我是房主 (创建)</button>
+            <button onclick="joinRoom()" style="background:#007bff; padding: 10px 20px; font-size:16px;">加入房间</button>
+        </div>
+    </div>
+    
+    <!-- 状态显示 -->
+    <div id="connection-status" style="margin-top:10px; text-align:center; font-size:14px; color:#666;"></div>
 </div>
 
 <div id="game-container">
     <div id="left-panel">
         <!-- 画布模式 -->
         <div id="canvas-wrapper">
-            <canvas id="canvas" width="600" height="450"></canvas>
+            <canvas id="canvas"></canvas>
             <div id="blocker"></div>
             <div id="status-overlay" style="display:none;">
                 <div id="overlay-text">等待开始</div>
@@ -122,13 +151,13 @@
         <div id="gallery-view"></div>
 
         <div style="display:flex; gap:10px; justify-content:center; margin-top:5px;">
-            <button onclick="clearCanvas()">清空画板</button>
+            <button onclick="clearCanvas()" id="btn-clear" disabled>清空画板</button>
         </div>
     </div>
 
     <div id="right-panel">
         <div id="player-list">
-            <div style="font-weight:bold; margin-bottom:5px;">玩家列表:</div>
+            <div style="font-weight:bold; margin-bottom:5px; border-bottom:1px solid #eee;">玩家列表:</div>
             <div id="p-list-content">等待加入...</div>
         </div>
         <div id="chat-box">
@@ -144,20 +173,23 @@
 <!-- 房主输入词语的弹窗 -->
 <div id="host-input-modal">
     <div class="modal-content">
-        <h3>P1 请出题 (5个词)</h3>
-        <input type="text" id="word1" placeholder="词语 1">
+        <h3 style="margin-top:0">P1 请出题 (5个词)</h3>
+        <input type="text" id="word1" placeholder="词语 1 (如: 苹果)">
         <input type="text" id="word2" placeholder="词语 2">
         <input type="text" id="word3" placeholder="词语 3">
         <input type="text" id="word4" placeholder="词语 4">
         <input type="text" id="word5" placeholder="词语 5">
-        <button onclick="submitWords()" style="width:100%; background:#dc3545; color:white; font-weight:bold;">开始地狱级2秒挑战！</button>
+        <div style="display:flex; gap:10px; margin-top:10px;">
+            <button onclick="submitWords()" style="flex:1; background:#dc3545; color:white; font-weight:bold;">开始挑战！</button>
+            <button onclick="document.getElementById('host-input-modal').style.display='none'" style="background:#6c757d;">取消</button>
+        </div>
     </div>
 </div>
 
 <script>
-    // --- 游戏配置 (已修改) ---
-    const DRAW_TIME = 2;    // 画画时间改为 2 秒
-    const PREPARE_TIME = 1; // 准备时间改为 1 秒
+    // --- 游戏配置 ---
+    const DRAW_TIME = 2;    // 画画时间 (秒)
+    const PREPARE_TIME = 2; // 准备时间 (秒)
     
     // --- 状态变量 ---
     let peer = null;
@@ -168,7 +200,7 @@
     let connections = []; 
     let hostConn = null;  
     
-    // 玩家数据结构: { id, name, roleName, roleTag }
+    // 玩家数据
     let players = []; 
     
     // 游戏数据
@@ -185,72 +217,161 @@
     const ctx = canvas.getContext('2d');
     let isDrawing = false;
 
-    // --- 辅助函数：获取特定角色的玩家 ---
+    // --- 初始化画布尺寸 ---
+    function resizeCanvas() {
+        const wrapper = document.getElementById('canvas-wrapper');
+        canvas.width = wrapper.clientWidth;
+        canvas.height = wrapper.clientHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // --- 辅助函数 ---
     function getP2() { return players.find(p => p.roleTag === 'P2'); }
     function hasP3() { return players.some(p => p.roleTag === 'P3'); }
+    function setStatus(html) { document.getElementById('connection-status').innerHTML = html; }
 
-    // --- 1. 网络连接 ---
-    function initPeer() {
-        peer = new Peer(null, { debug: 1 });
+    // --- 1. 网络连接 (优化版) ---
+    function initPeer(customId) {
+        // 使用 Google STUN 服务器提高穿透率
+        const peerConfig = {
+            debug: 1,
+            config: {
+                'iceServers': [
+                    { url: 'stun:stun.l.google.com:19302' },
+                    { url: 'stun:stun1.l.google.com:19302' }
+                ]
+            }
+        };
+
+        // 如果有自定义ID就用，没有就自动生成
+        peer = customId ? new Peer(customId, peerConfig) : new Peer(null, peerConfig);
+        
         peer.on('open', id => {
             myId = id;
-            document.getElementById('id-info').innerText = `ID: ${id}`;
+            document.getElementById('conn-panel').style.display = 'none'; // 隐藏连接面板
+            document.getElementById('my-role-display').innerHTML = `我是: <b>${myName}</b> | 房间号: <span style="color:blue">${id}</span>`;
+            addMsg('系统', `✅ 连接成功！房间号：${id}`, true);
         });
-        peer.on('error', err => alert("连接错误:" + err.type));
+
+        peer.on('error', err => {
+            console.error(err);
+            let msg = "连接错误";
+            if (err.type === 'unavailable-id') msg = "❌ 房间号已被占用，请换一个！";
+            if (err.type === 'peer-unavailable') msg = "❌ 找不到房间，请检查房间号！";
+            if (err.type === 'network') msg = "❌ 网络连接断开";
+            setStatus(`<span style="color:red">${msg}</span>`);
+            
+            // 如果是ID占用，允许重试
+            if(err.type === 'unavailable-id' || err.type === 'peer-unavailable') {
+                setTimeout(() => { 
+                    if(peer) peer.destroy(); 
+                    peer = null;
+                }, 500);
+            }
+        });
+
+        peer.on('disconnected', () => {
+             addMsg('系统', '⚠️ 与服务器断开，正在尝试重连...', true);
+             peer.reconnect();
+        });
+    }
+
+    // --- 心跳保活 (防止连接假死) ---
+    function keepAlive(conn) {
+        const pingInterval = setInterval(() => {
+            if (conn && conn.open) {
+                conn.send({ type: 'ping' });
+            } else {
+                clearInterval(pingInterval);
+            }
+        }, 5000);
     }
 
     function createRoom() {
-        myName = document.getElementById('nickname').value + " (P1)";
+        const roomId = document.getElementById('room-id-input').value.trim();
+        if(!roomId) return setStatus('<span style="color:red">请输入房间号！</span>');
+        
+        myName = document.getElementById('nickname').value + " (房主)";
         isHost = true;
         myRoleTag = 'P1';
-        initPeer();
-        // 房主默认P1
-        players = [{ id: 'HOST', name: myName, roleName: '出题者', roleTag: 'P1' }];
-        updateUI();
-        document.getElementById('setup-box').innerHTML = `<b>房间已创建！等待玩家加入...</b> <button onclick="copyId()">复制ID</button>`;
         
-        peer.on('connection', conn => {
-            conn.on('open', () => {
-                connections.push(conn);
-                conn.on('data', data => handleHostData(data, conn));
-            });
-        });
+        setStatus('正在创建房间...');
+        initPeer(roomId);
+        
+        players = [{ id: 'HOST', name: myName, roleName: '出题者(P1)', roleTag: 'P1' }];
+        updateUI();
+        
+        // 房主监听连接
+        setTimeout(() => {
+            if(peer) {
+                peer.on('connection', conn => {
+                    conn.on('open', () => {
+                        connections.push(conn);
+                        keepAlive(conn);
+                        conn.on('data', data => handleHostData(data, conn));
+                        conn.on('close', () => {
+                            connections = connections.filter(c => c !== conn);
+                            players = players.filter(p => p.id !== conn.peer);
+                            broadcast({ type: 'update_players', players: players });
+                        });
+                    });
+                });
+            }
+        }, 100);
     }
 
     function joinRoom() {
-        const hostId = document.getElementById('host-id').value;
-        if(!hostId) return alert("请输入房主ID");
+        const roomId = document.getElementById('room-id-input').value.trim();
+        if(!roomId) return setStatus('<span style="color:red">请输入房间号！</span>');
         
         myName = document.getElementById('nickname').value;
-        const roleReq = document.getElementById('role-select').value; // 获取请求的角色
+        const roleReq = document.getElementById('role-select').value;
         
         isHost = false;
-        initPeer();
-        document.getElementById('setup-box').innerHTML = `正在连接...`;
+        setStatus('正在连接服务器...');
+        initPeer(null); // 游客不需要自定义ID，自动生成
 
-        setTimeout(() => {
-            hostConn = peer.connect(hostId);
-            hostConn.on('open', () => {
-                document.getElementById('setup-box').innerHTML = `<b style="color:green">已加入！</b>`;
-                // 发送加入请求，带上想要的角色
-                hostConn.send({ type: 'join', name: myName, roleReq: roleReq });
-            });
-            hostConn.on('data', handleClientData);
-        }, 1000);
+        // 等待 Peer 打开后再连接房主
+        const checkPeerOpen = setInterval(() => {
+            if (peer && !peer.disconnected && !peer.destroyed && myId) {
+                clearInterval(checkPeerOpen);
+                setStatus(`正在加入房间 ${roomId}...`);
+                
+                hostConn = peer.connect(roomId);
+                
+                hostConn.on('open', () => {
+                    setStatus('<span style="color:green">已连接！等待房主确认...</span>');
+                    keepAlive(hostConn);
+                    hostConn.send({ type: 'join', name: myName, roleReq: roleReq });
+                });
+
+                hostConn.on('data', handleClientData);
+                
+                hostConn.on('close', () => {
+                    alert("与房主断开连接！");
+                    location.reload();
+                });
+                
+                // 5秒连不上报错
+                setTimeout(() => {
+                    if(!hostConn.open) setStatus('<span style="color:red">连接超时，请检查房间号或网络</span>');
+                }, 5000);
+            }
+        }, 500);
     }
 
-    function copyId() { navigator.clipboard.writeText(myId); }
-
-    // --- 2. 房主逻辑 (核心控制) ---
+    // --- 2. 房主逻辑 ---
 
     function handleHostData(data, conn) {
+        if (data.type === 'ping') return; // 忽略心跳
+
         if (data.type === 'join') {
-            // 角色分配逻辑
+            // 角色分配
             let assignedRoleName = '观众';
             let assignedRoleTag = 'OBS';
             let warningMsg = '';
 
-            // 检查P2是否被占用
             const isP2Taken = players.some(p => p.roleTag === 'P2');
             
             if (data.roleReq === 'P2') {
@@ -258,35 +379,38 @@
                     assignedRoleName = '画手 (P2)';
                     assignedRoleTag = 'P2';
                 } else {
-                    warningMsg = '(P2已满，自动转为观众)';
+                    warningMsg = '(P2已满，转为观众)';
                 }
             } else if (data.roleReq === 'P3') {
                 assignedRoleName = '猜题 (P3)';
                 assignedRoleTag = 'P3';
             }
 
+            // 移除旧的同ID玩家（防止断线重连重复）
+            players = players.filter(p => p.id !== conn.peer);
             players.push({ id: conn.peer, name: data.name, roleName: assignedRoleName, roleTag: assignedRoleTag });
             
-            // 广播玩家列表更新
             broadcast({ type: 'update_players', players: players });
             broadcast({ type: 'chat', name: '系统', msg: `${data.name} 加入了房间 ${warningMsg}`, isSys: true });
             
-            // 告诉新来的玩家他是谁
             conn.send({ type: 'you_are', roleTag: assignedRoleTag });
 
-            // 如果P2就位，且至少有一个P3，提示房主开始
+            // 自动弹出出题框
             if (getP2() && hasP3() && !isGameRunning) {
                 document.getElementById('host-input-modal').style.display = 'flex';
             }
         }
         
         if (data.type === 'draw' || data.type === 'clear') {
-            // 只有P2能画
             const p2 = getP2();
             if (p2 && conn.peer === p2.id) {
-                // 房主自己画
-                if(data.type === 'draw') drawLocal(data.x, data.y, data.isStart);
+                if(data.type === 'draw') drawLocal(data.x, data.y, data.isStart, data.width, data.height);
                 else ctx.clearRect(0,0,canvas.width, canvas.height);
+                
+                // 转发给其他人
+                connections.forEach(c => {
+                    if(c.peer !== conn.peer) c.send(data);
+                });
             }
         }
 
@@ -311,7 +435,7 @@
         isGalleryPhase = false;
         currentWordIndex = -1;
         
-        broadcast({ type: 'chat', name: '系统', msg: `游戏开始！P2将连续画5张图，每张只有${DRAW_TIME}秒！`, isSys: true });
+        broadcast({ type: 'chat', name: '系统', msg: `🎮 游戏开始！P2将连续画5张图，每张只有${DRAW_TIME}秒！`, isSys: true });
         
         nextWord();
     }
@@ -343,7 +467,7 @@
     function startDrawingPhase(word) {
         ctx.clearRect(0,0,canvas.width, canvas.height);
         
-        // 找到P2的连接并通知清空
+        // 通知P2清空
         const p2 = getP2();
         const p2Conn = connections.find(c => c.peer === p2.id);
         if(p2Conn) p2Conn.send({ type: 'clear' }); 
@@ -357,9 +481,10 @@
                 broadcastState('drawing', word, drawTime);
             } else {
                 clearInterval(timerInterval);
+                // 保存图片
                 const imgData = canvas.toDataURL("image/png");
                 savedImages.push(imgData);
-                broadcast({ type: 'chat', name: '系统', msg: `第 ${currentWordIndex+1} 张图已保存！`, isSys: true });
+                broadcast({ type: 'chat', name: '系统', msg: `📸 第 ${currentWordIndex+1} 张图已保存！`, isSys: true });
                 setTimeout(nextWord, 1000);
             }
         }, 1000);
@@ -375,12 +500,10 @@
     }
 
     function checkGuess(msg, playerName) {
-        let newSolve = false;
         gameWords.forEach((word, idx) => {
             if (solvedIndices.includes(idx)) return;
             if (msg.includes(word)) {
                 solvedIndices.push(idx);
-                newSolve = true;
                 const winMsg = `🎉 ${playerName} 猜对了第 ${idx+1} 题：【${word}】`;
                 broadcast({ 
                     type: 'solve_word', index: idx, word: word,
@@ -405,19 +528,14 @@
             word: word,
             index: currentWordIndex + 1
         };
-        
-        updateGameUI(data); // 房主UI
-
-        // 遍历连接分发
+        updateGameUI(data); 
         connections.forEach(conn => {
             const p = players.find(pl => pl.id === conn.peer);
             if (!p) return;
-
             // P3 和 观众 在作画阶段看不到词
             if (p.roleTag === 'P3' || p.roleTag === 'OBS') {
                 conn.send({...data, word: '???'});
             } else {
-                // P2 能看到词
                 conn.send(data);
             }
         });
@@ -436,8 +554,13 @@
     // --- 3. 客户端逻辑 ---
 
     function handleClientData(data) {
+        if (data.type === 'ping') return;
+
         if (data.type === 'you_are') {
-            myRoleTag = data.roleTag; // 确认自己的角色
+            myRoleTag = data.roleTag; 
+            document.getElementById('my-role-display').innerHTML += ` | 角色: <b>${data.roleTag}</b>`;
+            // 只有P2能清空
+            document.getElementById('btn-clear').disabled = (myRoleTag !== 'P2');
         }
         if (data.type === 'update_players') {
             players = data.players;
@@ -445,8 +568,10 @@
         }
         if (data.type === 'chat') addMsg(data.name, data.msg, data.isSys, data.isWin);
         
-        // P2 本地画画回显
-        if (data.type === 'draw') drawLocal(data.x, data.y, data.isStart);
+        // 坐标归一化处理，防止不同屏幕尺寸画歪
+        if (data.type === 'draw') {
+            drawLocal(data.x, data.y, data.isStart, data.width, data.height);
+        }
         if (data.type === 'clear') ctx.clearRect(0,0,canvas.width, canvas.height);
         
         if (data.type === 'state_update') updateGameUI(data);
@@ -484,15 +609,9 @@
     }
 
     function updateUI() {
-        // 更新顶部角色显示
-        const myP = players.find(p => p.id === (isHost ? 'HOST' : myId));
-        const roleStr = myP ? myP.roleName : '未知';
-        document.getElementById('my-role-display').innerHTML = `我是: <b>${roleStr}</b>`;
-
-        // 更新列表
         const html = players.map(p => `
             <div class="p-card">
-                <span>${p.name}</span>
+                <span>${p.name} ${p.id===(isHost?'HOST':myId) ? '(我)':''}</span>
                 <span class="role-badge role-${p.roleTag}">${p.roleName}</span>
             </div>
         `).join('');
@@ -551,49 +670,61 @@
             if(isGalleryPhase) checkGuess(val, myName);
             addMsg(myName, val);
         } else {
-            hostConn.send({ type: 'chat', msg: val, name: myName });
+            if(hostConn && hostConn.open) {
+                hostConn.send({ type: 'chat', msg: val, name: myName });
+            } else {
+                addMsg('系统', '未连接，无法发送', true);
+            }
         }
         input.value = '';
     }
 
-    // --- 5. 画板逻辑 ---
+    // --- 5. 画板逻辑 (坐标修正版) ---
     function getPos(e) {
         const rect = canvas.getBoundingClientRect();
         const t = e.changedTouches ? e.changedTouches[0] : e;
-        return { x: t.clientX - rect.left, y: t.clientY - rect.top };
+        // 返回相对坐标比例 (0-1)，以便在不同屏幕上还原
+        return { 
+            x: (t.clientX - rect.left) / canvas.width, 
+            y: (t.clientY - rect.top) / canvas.height 
+        };
     }
 
     function startDraw(e) {
-        if (!isDrawing && myRoleTag === 'P2') { 
+        if (!isDrawing && myRoleTag === 'P2' && isGameRunning) { 
             isDrawing = true;
             const p = getPos(e);
-            drawLocal(p.x, p.y, true);
-            if(!isHost) hostConn.send({ type: 'draw', x: p.x, y: p.y, isStart: true });
+            drawLocal(p.x, p.y, true, canvas.width, canvas.height);
+            if(!isHost) hostConn.send({ type: 'draw', x: p.x, y: p.y, isStart: true, width: canvas.width, height: canvas.height });
         }
     }
 
     function moveDraw(e) {
         if (!isDrawing) return;
-        e.preventDefault();
+        e.preventDefault(); // 防止手机滚动
         const p = getPos(e);
-        drawLocal(p.x, p.y, false);
-        if(!isHost) hostConn.send({ type: 'draw', x: p.x, y: p.y, isStart: false });
+        drawLocal(p.x, p.y, false, canvas.width, canvas.height);
+        if(!isHost) hostConn.send({ type: 'draw', x: p.x, y: p.y, isStart: false, width: canvas.width, height: canvas.height });
     }
 
     function stopDraw() { isDrawing = false; }
 
-    function drawLocal(x, y, isStart) {
+    function drawLocal(x, y, isStart, remoteW, remoteH) {
+        // 使用相对坐标还原实际坐标
+        const actualX = x * canvas.width;
+        const actualY = y * canvas.height;
+
         ctx.lineWidth = 4;
         ctx.lineCap = 'round';
         ctx.strokeStyle = '#000';
-        if (isStart) { ctx.beginPath(); ctx.moveTo(x, y); }
-        else { ctx.lineTo(x, y); ctx.stroke(); }
+        if (isStart) { ctx.beginPath(); ctx.moveTo(actualX, actualY); }
+        else { ctx.lineTo(actualX, actualY); ctx.stroke(); }
     }
     
     function clearCanvas() {
         if (myRoleTag === 'P2') {
             ctx.clearRect(0,0,canvas.width, canvas.height);
-            hostConn.send({ type: 'clear' });
+            if(!isHost) hostConn.send({ type: 'clear' });
         }
     }
 
@@ -601,8 +732,8 @@
     canvas.addEventListener('mousemove', moveDraw);
     canvas.addEventListener('mouseup', stopDraw);
     canvas.addEventListener('mouseout', stopDraw);
-    canvas.addEventListener('touchstart', startDraw);
-    canvas.addEventListener('touchmove', moveDraw);
+    canvas.addEventListener('touchstart', startDraw, {passive: false});
+    canvas.addEventListener('touchmove', moveDraw, {passive: false});
     canvas.addEventListener('touchend', stopDraw);
 
 </script>
