@@ -188,8 +188,8 @@
 
 <script>
     // --- 游戏配置 ---
-    const DRAW_TIME = 2;    // 画画时间 (秒)
-    const PREPARE_TIME = 2; // 准备时间 (秒)
+    const DRAW_TIME = 2;    // 修改：改为10秒方便测试
+    const PREPARE_TIME = 1;  // 准备时间
     
     // --- 状态变量 ---
     let peer = null;
@@ -220,20 +220,22 @@
     // --- 初始化画布尺寸 ---
     function resizeCanvas() {
         const wrapper = document.getElementById('canvas-wrapper');
-        canvas.width = wrapper.clientWidth;
-        canvas.height = wrapper.clientHeight;
+        if(wrapper) {
+            canvas.width = wrapper.clientWidth;
+            canvas.height = wrapper.clientHeight;
+        }
     }
     window.addEventListener('resize', resizeCanvas);
-    resizeCanvas();
+    // 页面加载后延迟一下再调整，确保容器已渲染
+    setTimeout(resizeCanvas, 100);
 
     // --- 辅助函数 ---
     function getP2() { return players.find(p => p.roleTag === 'P2'); }
     function hasP3() { return players.some(p => p.roleTag === 'P3'); }
     function setStatus(html) { document.getElementById('connection-status').innerHTML = html; }
 
-    // --- 1. 网络连接 (优化版) ---
+    // --- 1. 网络连接 ---
     function initPeer(customId) {
-        // 使用 Google STUN 服务器提高穿透率
         const peerConfig = {
             debug: 1,
             config: {
@@ -244,47 +246,34 @@
             }
         };
 
-        // 如果有自定义ID就用，没有就自动生成
         peer = customId ? new Peer(customId, peerConfig) : new Peer(null, peerConfig);
         
         peer.on('open', id => {
             myId = id;
-            document.getElementById('conn-panel').style.display = 'none'; // 隐藏连接面板
+            document.getElementById('conn-panel').style.display = 'none';
             document.getElementById('my-role-display').innerHTML = `我是: <b>${myName}</b> | 房间号: <span style="color:blue">${id}</span>`;
             addMsg('系统', `✅ 连接成功！房间号：${id}`, true);
+            resizeCanvas(); // 连接成功后再调整一次画布
         });
 
         peer.on('error', err => {
             console.error(err);
             let msg = "连接错误";
-            if (err.type === 'unavailable-id') msg = "❌ 房间号已被占用，请换一个！";
-            if (err.type === 'peer-unavailable') msg = "❌ 找不到房间，请检查房间号！";
-            if (err.type === 'network') msg = "❌ 网络连接断开";
+            if (err.type === 'unavailable-id') msg = "❌ 房间号已被占用！";
+            if (err.type === 'peer-unavailable') msg = "❌ 找不到房间！";
             setStatus(`<span style="color:red">${msg}</span>`);
-            
-            // 如果是ID占用，允许重试
-            if(err.type === 'unavailable-id' || err.type === 'peer-unavailable') {
-                setTimeout(() => { 
-                    if(peer) peer.destroy(); 
-                    peer = null;
-                }, 500);
-            }
         });
 
         peer.on('disconnected', () => {
-             addMsg('系统', '⚠️ 与服务器断开，正在尝试重连...', true);
+             addMsg('系统', '⚠️ 断开，尝试重连...', true);
              peer.reconnect();
         });
     }
 
-    // --- 心跳保活 (防止连接假死) ---
     function keepAlive(conn) {
         const pingInterval = setInterval(() => {
-            if (conn && conn.open) {
-                conn.send({ type: 'ping' });
-            } else {
-                clearInterval(pingInterval);
-            }
+            if (conn && conn.open) conn.send({ type: 'ping' });
+            else clearInterval(pingInterval);
         }, 5000);
     }
 
@@ -302,7 +291,6 @@
         players = [{ id: 'HOST', name: myName, roleName: '出题者(P1)', roleTag: 'P1' }];
         updateUI();
         
-        // 房主监听连接
         setTimeout(() => {
             if(peer) {
                 peer.on('connection', conn => {
@@ -315,6 +303,11 @@
                             players = players.filter(p => p.id !== conn.peer);
                             broadcast({ type: 'update_players', players: players });
                         });
+                        // 同步当前画布给新玩家（如果在等待阶段）
+                        if(!isGameRunning) {
+                            const img = canvas.toDataURL();
+                            conn.send({type: 'sync_canvas', img: img});
+                        }
                     });
                 });
             }
@@ -330,33 +323,20 @@
         
         isHost = false;
         setStatus('正在连接服务器...');
-        initPeer(null); // 游客不需要自定义ID，自动生成
+        initPeer(null); 
 
-        // 等待 Peer 打开后再连接房主
         const checkPeerOpen = setInterval(() => {
             if (peer && !peer.disconnected && !peer.destroyed && myId) {
                 clearInterval(checkPeerOpen);
                 setStatus(`正在加入房间 ${roomId}...`);
-                
                 hostConn = peer.connect(roomId);
-                
                 hostConn.on('open', () => {
-                    setStatus('<span style="color:green">已连接！等待房主确认...</span>');
+                    setStatus('<span style="color:green">已连接！</span>');
                     keepAlive(hostConn);
                     hostConn.send({ type: 'join', name: myName, roleReq: roleReq });
                 });
-
                 hostConn.on('data', handleClientData);
-                
-                hostConn.on('close', () => {
-                    alert("与房主断开连接！");
-                    location.reload();
-                });
-                
-                // 5秒连不上报错
-                setTimeout(() => {
-                    if(!hostConn.open) setStatus('<span style="color:red">连接超时，请检查房间号或网络</span>');
-                }, 5000);
+                hostConn.on('close', () => { alert("与房主断开连接！"); location.reload(); });
             }
         }, 500);
     }
@@ -364,47 +344,41 @@
     // --- 2. 房主逻辑 ---
 
     function handleHostData(data, conn) {
-        if (data.type === 'ping') return; // 忽略心跳
+        if (data.type === 'ping') return;
 
         if (data.type === 'join') {
-            // 角色分配
             let assignedRoleName = '观众';
             let assignedRoleTag = 'OBS';
             let warningMsg = '';
-
             const isP2Taken = players.some(p => p.roleTag === 'P2');
             
             if (data.roleReq === 'P2') {
-                if (!isP2Taken) {
-                    assignedRoleName = '画手 (P2)';
-                    assignedRoleTag = 'P2';
-                } else {
-                    warningMsg = '(P2已满，转为观众)';
-                }
+                if (!isP2Taken) { assignedRoleName = '画手 (P2)'; assignedRoleTag = 'P2'; } 
+                else { warningMsg = '(P2已满)'; }
             } else if (data.roleReq === 'P3') {
-                assignedRoleName = '猜题 (P3)';
-                assignedRoleTag = 'P3';
+                assignedRoleName = '猜题 (P3)'; assignedRoleTag = 'P3';
             }
 
-            // 移除旧的同ID玩家（防止断线重连重复）
             players = players.filter(p => p.id !== conn.peer);
             players.push({ id: conn.peer, name: data.name, roleName: assignedRoleName, roleTag: assignedRoleTag });
             
             broadcast({ type: 'update_players', players: players });
-            broadcast({ type: 'chat', name: '系统', msg: `${data.name} 加入了房间 ${warningMsg}`, isSys: true });
-            
+            broadcast({ type: 'chat', name: '系统', msg: `${data.name} 加入 ${warningMsg}`, isSys: true });
             conn.send({ type: 'you_are', roleTag: assignedRoleTag });
 
-            // 自动弹出出题框
             if (getP2() && hasP3() && !isGameRunning) {
                 document.getElementById('host-input-modal').style.display = 'flex';
             }
         }
         
+        // 修改：允许非游戏状态下的自由绘画，或者游戏状态下的P2绘画
         if (data.type === 'draw' || data.type === 'clear') {
             const p2 = getP2();
-            if (p2 && conn.peer === p2.id) {
-                if(data.type === 'draw') drawLocal(data.x, data.y, data.isStart, data.width, data.height);
+            const isSenderP2 = (p2 && conn.peer === p2.id);
+            
+            // 允许绘制的条件：游戏未开始 OR 发送者是P2
+            if (!isGameRunning || isSenderP2) {
+                if(data.type === 'draw') drawLocal(data.x, data.y, data.isStart);
                 else ctx.clearRect(0,0,canvas.width, canvas.height);
                 
                 // 转发给其他人
@@ -421,8 +395,7 @@
     }
 
     function submitWords() {
-        if(!getP2() || !hasP3()) return alert("需要 P2(画手) 和 至少一位 P3(猜题) 才能开始！");
-
+        if(!getP2() || !hasP3()) return alert("需要 P2(画手) 和 P3(猜题) 才能开始！");
         const inputs = [1,2,3,4,5].map(i => document.getElementById('word'+i).value.trim());
         if (inputs.some(w => !w)) return alert("请填满5个词！");
         
@@ -435,8 +408,7 @@
         isGalleryPhase = false;
         currentWordIndex = -1;
         
-        broadcast({ type: 'chat', name: '系统', msg: `🎮 游戏开始！P2将连续画5张图，每张只有${DRAW_TIME}秒！`, isSys: true });
-        
+        broadcast({ type: 'chat', name: '系统', msg: `🎮 游戏开始！`, isSys: true });
         nextWord();
     }
 
@@ -466,11 +438,7 @@
 
     function startDrawingPhase(word) {
         ctx.clearRect(0,0,canvas.width, canvas.height);
-        
-        // 通知P2清空
-        const p2 = getP2();
-        const p2Conn = connections.find(c => c.peer === p2.id);
-        if(p2Conn) p2Conn.send({ type: 'clear' }); 
+        broadcast({ type: 'clear' }, 'HOST'); // 清空所有人画板
 
         let drawTime = DRAW_TIME;
         broadcastState('drawing', word, drawTime);
@@ -481,10 +449,9 @@
                 broadcastState('drawing', word, drawTime);
             } else {
                 clearInterval(timerInterval);
-                // 保存图片
                 const imgData = canvas.toDataURL("image/png");
                 savedImages.push(imgData);
-                broadcast({ type: 'chat', name: '系统', msg: `📸 第 ${currentWordIndex+1} 张图已保存！`, isSys: true });
+                broadcast({ type: 'chat', name: '系统', msg: `📸 图 ${currentWordIndex+1} 已保存`, isSys: true });
                 setTimeout(nextWord, 1000);
             }
         }, 1000);
@@ -492,8 +459,8 @@
 
     function startGalleryPhase() {
         isGalleryPhase = true;
-        broadcast({ type: 'chat', name: '系统', msg: '🔥 作画结束！请看图抢答！', isSys: true });
-        
+        isGameRunning = false; // 游戏逻辑结束，进入看图模式
+        broadcast({ type: 'chat', name: '系统', msg: '🔥 抢答开始！', isSys: true });
         const galleryData = { type: 'show_gallery', images: savedImages };
         broadcast(galleryData, 'HOST'); 
         handleClientData(galleryData); 
@@ -504,47 +471,27 @@
             if (solvedIndices.includes(idx)) return;
             if (msg.includes(word)) {
                 solvedIndices.push(idx);
-                const winMsg = `🎉 ${playerName} 猜对了第 ${idx+1} 题：【${word}】`;
-                broadcast({ 
-                    type: 'solve_word', index: idx, word: word,
-                    msg: winMsg
-                });
+                const winMsg = `🎉 ${playerName} 答对第 ${idx+1} 题：【${word}】`;
+                broadcast({ type: 'solve_word', index: idx, word: word, msg: winMsg });
                 updateGalleryItem(idx, word);
                 addMsg('系统', winMsg, false, true);
             }
         });
-
-        if (solvedIndices.length === 5) {
-            broadcast({ type: 'chat', name: '系统', msg: '🏆 全部题目已被攻克！游戏结束！', isWin: true });
-            isGameRunning = false;
-        }
     }
 
     function broadcastState(phase, word, time) {
-        const data = {
-            type: 'state_update',
-            phase: phase,
-            time: time,
-            word: word,
-            index: currentWordIndex + 1
-        };
+        const data = { type: 'state_update', phase: phase, time: time, word: word, index: currentWordIndex + 1 };
         updateGameUI(data); 
         connections.forEach(conn => {
             const p = players.find(pl => pl.id === conn.peer);
             if (!p) return;
-            // P3 和 观众 在作画阶段看不到词
-            if (p.roleTag === 'P3' || p.roleTag === 'OBS') {
-                conn.send({...data, word: '???'});
-            } else {
-                conn.send(data);
-            }
+            if (p.roleTag === 'P3' || p.roleTag === 'OBS') conn.send({...data, word: '???'});
+            else conn.send(data);
         });
     }
 
     function broadcast(data, excludeId) {
-        connections.forEach(c => {
-            if(c.peer !== excludeId) c.send(data);
-        });
+        connections.forEach(c => { if(c.peer !== excludeId) c.send(data); });
         if (isHost && excludeId !== 'HOST') {
             if(data.type === 'update_players') updateUI();
             if(data.type === 'chat') addMsg(data.name, data.msg, data.isSys, data.isWin);
@@ -555,32 +502,21 @@
 
     function handleClientData(data) {
         if (data.type === 'ping') return;
-
         if (data.type === 'you_are') {
             myRoleTag = data.roleTag; 
             document.getElementById('my-role-display').innerHTML += ` | 角色: <b>${data.roleTag}</b>`;
-            // 只有P2能清空
-            document.getElementById('btn-clear').disabled = (myRoleTag !== 'P2');
         }
-        if (data.type === 'update_players') {
-            players = data.players;
-            updateUI();
-        }
+        if (data.type === 'update_players') { players = data.players; updateUI(); }
         if (data.type === 'chat') addMsg(data.name, data.msg, data.isSys, data.isWin);
-        
-        // 坐标归一化处理，防止不同屏幕尺寸画歪
-        if (data.type === 'draw') {
-            drawLocal(data.x, data.y, data.isStart, data.width, data.height);
-        }
+        if (data.type === 'draw') drawLocal(data.x, data.y, data.isStart);
         if (data.type === 'clear') ctx.clearRect(0,0,canvas.width, canvas.height);
-        
         if (data.type === 'state_update') updateGameUI(data);
-        
         if (data.type === 'show_gallery') renderGallery(data.images);
-        
-        if (data.type === 'solve_word') {
-            updateGalleryItem(data.index, data.word);
-            addMsg('系统', data.msg, false, true);
+        if (data.type === 'solve_word') { updateGalleryItem(data.index, data.word); addMsg('系统', data.msg, false, true); }
+        if (data.type === 'sync_canvas') {
+            const img = new Image();
+            img.onload = () => ctx.drawImage(img, 0, 0);
+            img.src = data.img;
         }
     }
 
@@ -602,10 +538,7 @@
     function updateGalleryItem(index, word) {
         const item = document.getElementById(`g-item-${index}`);
         const ans = document.getElementById(`ans-${index}`);
-        if(item && ans) {
-            item.classList.add('solved');
-            ans.innerText = word;
-        }
+        if(item && ans) { item.classList.add('solved'); ans.innerText = word; }
     }
 
     function updateUI() {
@@ -616,12 +549,16 @@
             </div>
         `).join('');
         document.getElementById('p-list-content').innerHTML = html;
+        
+        // 按钮状态更新：游戏未开始时，大家都可以清空
+        const btnClear = document.getElementById('btn-clear');
+        if (!isGameRunning) btnClear.disabled = false;
+        else btnClear.disabled = (myRoleTag !== 'P2');
     }
 
     function updateGameUI(data) {
         document.getElementById('canvas-wrapper').style.display = 'flex';
         document.getElementById('gallery-view').style.display = 'none';
-
         const overlay = document.getElementById('status-overlay');
         const text = document.getElementById('overlay-text');
         const timer = document.getElementById('timer-display');
@@ -640,12 +577,12 @@
             if (amIDrawer) {
                 overlay.style.background = 'rgba(0,128,0,0.1)'; 
                 overlay.style.pointerEvents = 'none';
-                text.innerHTML = `🔥 只有${DRAW_TIME}秒! 画: ${data.word}`;
+                text.innerHTML = `🔥 画: ${data.word}`;
                 timer.style.color = 'red';
                 blocker.style.display = 'none';
             } else {
                 overlay.style.background = 'rgba(0,0,0,0.95)'; 
-                text.innerHTML = `P2 正在极速作画... (第 ${data.index} 张)`;
+                text.innerHTML = `P2 正在作画... (第 ${data.index} 张)`;
                 blocker.style.display = 'block';
             }
         }
@@ -664,26 +601,20 @@
         const input = document.getElementById('msg-input');
         const val = input.value.trim();
         if(!val) return;
-        
         if (isHost) {
             broadcast({ type: 'chat', name: myName, msg: val });
             if(isGalleryPhase) checkGuess(val, myName);
             addMsg(myName, val);
         } else {
-            if(hostConn && hostConn.open) {
-                hostConn.send({ type: 'chat', msg: val, name: myName });
-            } else {
-                addMsg('系统', '未连接，无法发送', true);
-            }
+            if(hostConn && hostConn.open) hostConn.send({ type: 'chat', msg: val, name: myName });
         }
         input.value = '';
     }
 
-    // --- 5. 画板逻辑 (坐标修正版) ---
+    // --- 5. 画板逻辑 (修改版) ---
     function getPos(e) {
         const rect = canvas.getBoundingClientRect();
         const t = e.changedTouches ? e.changedTouches[0] : e;
-        // 返回相对坐标比例 (0-1)，以便在不同屏幕上还原
         return { 
             x: (t.clientX - rect.left) / canvas.width, 
             y: (t.clientY - rect.top) / canvas.height 
@@ -691,29 +622,36 @@
     }
 
     function startDraw(e) {
-        if (!isDrawing && myRoleTag === 'P2' && isGameRunning) { 
+        // 修改：允许在游戏未开始时，或者游戏进行中且我是P2时绘画
+        const canDraw = (!isGameRunning) || (isGameRunning && myRoleTag === 'P2');
+        
+        if (!isDrawing && canDraw) { 
             isDrawing = true;
             const p = getPos(e);
-            drawLocal(p.x, p.y, true, canvas.width, canvas.height);
-            if(!isHost) hostConn.send({ type: 'draw', x: p.x, y: p.y, isStart: true, width: canvas.width, height: canvas.height });
+            drawLocal(p.x, p.y, true);
+            
+            const drawData = { type: 'draw', x: p.x, y: p.y, isStart: true };
+            if(!isHost) hostConn.send(drawData);
+            else broadcast(drawData, 'HOST'); // 房主在等待大厅画画时广播给别人
         }
     }
 
     function moveDraw(e) {
         if (!isDrawing) return;
-        e.preventDefault(); // 防止手机滚动
+        e.preventDefault();
         const p = getPos(e);
-        drawLocal(p.x, p.y, false, canvas.width, canvas.height);
-        if(!isHost) hostConn.send({ type: 'draw', x: p.x, y: p.y, isStart: false, width: canvas.width, height: canvas.height });
+        drawLocal(p.x, p.y, false);
+        
+        const drawData = { type: 'draw', x: p.x, y: p.y, isStart: false };
+        if(!isHost) hostConn.send(drawData);
+        else broadcast(drawData, 'HOST');
     }
 
     function stopDraw() { isDrawing = false; }
 
-    function drawLocal(x, y, isStart, remoteW, remoteH) {
-        // 使用相对坐标还原实际坐标
+    function drawLocal(x, y, isStart) {
         const actualX = x * canvas.width;
         const actualY = y * canvas.height;
-
         ctx.lineWidth = 4;
         ctx.lineCap = 'round';
         ctx.strokeStyle = '#000';
@@ -722,9 +660,12 @@
     }
     
     function clearCanvas() {
-        if (myRoleTag === 'P2') {
+        // 修改：游戏未开始时允许任何人清空
+        if (!isGameRunning || myRoleTag === 'P2') {
             ctx.clearRect(0,0,canvas.width, canvas.height);
-            if(!isHost) hostConn.send({ type: 'clear' });
+            const data = { type: 'clear' };
+            if(!isHost) hostConn.send(data);
+            else broadcast(data, 'HOST');
         }
     }
 
@@ -735,7 +676,7 @@
     canvas.addEventListener('touchstart', startDraw, {passive: false});
     canvas.addEventListener('touchmove', moveDraw, {passive: false});
     canvas.addEventListener('touchend', stopDraw);
-
 </script>
+
 </body>
 </html>
