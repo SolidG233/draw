@@ -2,681 +2,732 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>极速你画我猜 (稳定连接版)</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2024_Q1_财务报表_最终版.xlsx - Excel</title>
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <style>
-        * { box-sizing: border-box; }
-        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; display: flex; flex-direction: column; align-items: center; padding: 10px; margin: 0; height: 100vh; overflow: hidden; }
+        /* --- 全局 Excel 风格重置 --- */
+        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family: 'Calibri', 'Segoe UI', sans-serif; font-size: 13px; background: #fff; color: #333; }
+        * { box-sizing: border-box; user-select: none; }
         
-        /* 顶部 */
-        header { width: 100%; max-width: 1000px; background: #fff; padding: 10px 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
-        h1 { margin: 0; font-size: 18px; color: #333; display: flex; align-items: center; gap: 5px; }
-        .tag { font-size: 10px; background: #dc3545; color: white; padding: 2px 4px; border-radius: 3px; }
-        
-        /* 游戏核心区 */
-        #game-container { display: flex; gap: 10px; width: 100%; max-width: 1000px; flex: 1; overflow: hidden; }
-        
-        /* 左侧画板区 */
-        #left-panel { flex: 2; display: flex; flex-direction: column; gap: 10px; position: relative; min-width: 0; }
-        
-        #canvas-wrapper { position: relative; flex: 1; background: #fff; border: 2px solid #333; border-radius: 4px; display: flex; justify-content: center; align-items: center; overflow: hidden; touch-action: none; }
-        canvas { display: block; touch-action: none; cursor: crosshair; }
-        
-        /* 画廊视图 */
-        #gallery-view { 
-            display: none; flex: 1; background: #fff; border-radius: 4px; padding: 10px; 
-            flex-wrap: wrap; gap: 10px; justify-content: center; overflow-y: auto; align-content: flex-start;
-        }
-        .gallery-item { width: 30%; height: 120px; border: 1px solid #ccc; position: relative; display: flex; flex-direction: column; background: #eee; }
-        .gallery-item img { width: 100%; height: 100%; object-fit: contain; background: white; }
-        .gallery-item .label { position: absolute; top: 0; left: 0; background: #007bff; color: white; padding: 2px 6px; font-size: 12px; }
-        .gallery-item .answer { background: #28a745; color: white; text-align: center; font-weight: bold; padding: 5px; display: none; font-size: 12px; }
-        .gallery-item.solved .answer { display: block; }
-        .gallery-item.solved { border: 2px solid #28a745; }
+        /* 顶部绿条 */
+        .excel-header { background: #217346; color: white; height: 35px; display: flex; align-items: center; padding: 0 15px; font-size: 14px; }
+        .excel-header span { margin-right: 20px; cursor: pointer; opacity: 0.9; }
+        .excel-header span:hover { opacity: 1; text-decoration: underline; }
 
-        /* 遮罩与提示 */
-        #blocker { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.1); z-index: 10; display: none; cursor: not-allowed; }
+        /* 工具栏 (Ribbon) */
+        .ribbon { background: #f3f2f1; height: 50px; border-bottom: 1px solid #e1e1e1; display: flex; align-items: center; padding: 0 10px; gap: 10px; }
+        .ribbon-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 5px 10px; border: 1px solid transparent; cursor: pointer; color: #444; border-radius: 3px; }
+        .ribbon-btn:hover { background: #c5c5c5; border-color: #a0a0a0; }
+        .ribbon-btn:disabled { opacity: 0.3; cursor: default; }
+        .ribbon-icon { font-size: 16px; margin-bottom: 2px; }
+        .ribbon-text { font-size: 11px; }
+
+        /* 公式栏 (聊天输入) */
+        .formula-bar { background: #fff; height: 28px; display: flex; align-items: center; padding: 2px 5px; border-bottom: 1px solid #e1e1e1; }
+        .name-box { width: 60px; height: 100%; border: 1px solid #d4d4d4; display: flex; align-items: center; justify-content: center; background: #fff; margin-right: 5px; color: #666; font-size: 12px; }
+        .fx-icon { width: 30px; text-align: center; color: #999; font-style: italic; font-family: serif; font-weight: bold; }
+        .formula-input { flex: 1; height: 100%; border: 1px solid #d4d4d4; padding: 0 5px; font-family: 'Calibri', sans-serif; font-size: 14px; outline: none; }
+        .formula-input:focus { border-color: #217346; }
+
+        /* 主表格区域 */
+        .spreadsheet { display: flex; height: calc(100% - 140px); position: relative; }
         
-        #status-overlay { 
-            position: absolute; top: 20px; left: 50%; transform: translateX(-50%); 
-            background: rgba(0,0,0,0.8); color: white; padding: 10px 20px; 
-            border-radius: 30px; font-size: 18px; font-weight: bold; pointer-events: none; z-index: 20; text-align: center;
-            min-width: 180px; white-space: nowrap;
-        }
-        #timer-display { font-size: 32px; color: #ffeb3b; display: block; margin-top: 5px; font-weight: 900; }
-
-        /* 右侧聊天 */
-        #right-panel { flex: 1; display: flex; flex-direction: column; gap: 10px; min-width: 250px; }
-        #player-list { background: #fff; padding: 8px; border-radius: 8px; max-height: 150px; overflow-y: auto; font-size: 13px; }
-        .p-card { padding: 4px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
-        .role-badge { font-weight: bold; padding: 1px 4px; border-radius: 3px; font-size: 11px; }
-        .role-P1 { background: #ffeeba; color: #856404; }
-        .role-P2 { background: #d4edda; color: #155724; }
-        .role-P3 { background: #cce5ff; color: #004085; }
-        .role-OBS { background: #e2e3e5; color: #383d41; }
-
-        #chat-box { flex: 1; background: #fff; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; }
-        #messages { flex: 1; overflow-y: auto; padding: 10px; background: #f9f9f9; }
-        .msg { margin-bottom: 6px; font-size: 13px; word-break: break-all; }
-        .msg.sys { color: #888; text-align: center; font-style: italic; margin: 8px 0; font-size: 12px; }
-        .msg.win { background: #d4edda; color: #155724; padding: 5px; text-align: center; border-radius: 4px; font-weight: bold; }
+        /* 行号列号 */
+        .row-headers { width: 40px; background: #f8f9fa; border-right: 1px solid #d4d4d4; display: flex; flex-direction: column; text-align: center; color: #666; padding-top: 25px; }
+        .row-header { height: 25px; line-height: 25px; border-bottom: 1px solid #d4d4d4; font-size: 11px; }
         
-        #input-area { padding: 8px; display: flex; gap: 5px; border-top: 1px solid #eee; }
-        input[type=text] { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; outline: none; }
-        button { padding: 8px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap; }
-        button:hover { background: #0056b3; }
-        button:disabled { background: #ccc; cursor: not-allowed; }
+        .col-headers { height: 25px; background: #f8f9fa; border-bottom: 1px solid #d4d4d4; display: flex; padding-left: 40px; color: #666; font-size: 11px; position: absolute; top: 0; width: 100%; z-index: 1; }
+        .col-header { flex: 1; border-right: 1px solid #d4d4d4; display: flex; align-items: center; justify-content: center; }
 
-        /* 连接面板 */
-        #conn-panel { background: #fff; padding: 15px; border-radius: 8px; margin-bottom: 10px; width: 100%; max-width: 600px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-        .conn-row { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
-        .conn-divider { width: 100%; height: 1px; background: #eee; margin: 10px 0; }
+        /* 核心内容区 */
+        .grid-content { flex: 1; display: flex; margin-top: 25px; overflow: hidden; }
 
-        /* 房主出题弹窗 */
-        #host-input-modal { 
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); 
-            z-index: 100; display: none; justify-content: center; align-items: center; 
-        }
-        .modal-content { background: white; padding: 20px; border-radius: 8px; width: 300px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
-        .modal-content input { width: 100%; margin-bottom: 10px; box-sizing: border-box; }
+        /* 左侧：玩家列表 (伪装成数据列) */
+        .col-a { width: 180px; border-right: 1px solid #d4d4d4; display: flex; flex-direction: column; }
+        .cell-item { height: 25px; border-bottom: 1px solid #e1e1e1; padding: 0 5px; display: flex; align-items: center; font-size: 12px; }
+        .cell-item.header { font-weight: bold; background: #f0f0f0; }
         
-        select { padding: 8px; border-radius: 4px; border: 1px solid #ddd; }
+        /* 中间：画布 (伪装成合并单元格) */
+        .col-b { flex: 2; border-right: 1px solid #d4d4d4; position: relative; background: #fff; padding: 2px; }
+        #canvas-wrapper { width: 100%; height: 100%; border: 2px solid #217346; position: relative; cursor: crosshair; }
+        canvas { display: block; }
 
-        /* 移动端适配 */
-        @media (max-width: 768px) {
-            #game-container { flex-direction: column; }
-            #left-panel { flex: 1; height: 50vh; }
-            #right-panel { flex: 1; height: 40vh; min-width: 0; }
-            #canvas-wrapper { min-height: 250px; }
-            .gallery-item { width: 45%; }
-        }
+        /* 右侧：聊天记录 (伪装成备注列) */
+        .col-c { width: 250px; display: flex; flex-direction: column; background: #fff; border-right: 1px solid #d4d4d4; }
+        #messages { flex: 1; overflow-y: auto; overflow-x: hidden; }
+        .msg-row { min-height: 25px; border-bottom: 1px dotted #eee; padding: 2px 5px; font-size: 12px; display: flex; align-items: center; }
+        .msg-row.sys { color: #888; font-style: italic; }
+        .msg-row.win { color: #217346; font-weight: bold; background: #e6f4ea; }
+        .msg-row b { margin-right: 5px; color: #2b579a; }
+
+        /* 底部 Sheet 标签 */
+        .footer-tabs { height: 30px; background: #f3f2f1; border-top: 1px solid #d4d4d4; display: flex; align-items: flex-end; padding-left: 10px; }
+        .sheet-tab { padding: 3px 15px; background: #fff; border: 1px solid #d4d4d4; border-bottom: none; color: #217346; font-weight: bold; font-size: 12px; margin-right: 5px; border-radius: 3px 3px 0 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .status-bar { flex: 1; text-align: right; padding-right: 10px; color: #666; font-size: 11px; line-height: 25px; }
+
+        /* --- 弹窗 (伪装成 Excel 警告框) --- */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.2); z-index: 999; justify-content: center; align-items: center; }
+        .excel-dialog { background: #fff; border: 1px solid #888; box-shadow: 2px 2px 10px rgba(0,0,0,0.2); width: 350px; padding: 0; font-family: 'Segoe UI', sans-serif; }
+        .dialog-header { background: #fff; padding: 8px 10px; display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
+        .dialog-body { padding: 20px; background: #fff; font-size: 13px; }
+        .dialog-footer { padding: 10px; background: #f0f0f0; text-align: right; border-top: 1px solid #dfdfdf; }
+        
+        .dialog-btn { padding: 4px 20px; border: 1px solid #adadad; background: #e1e1e1; font-size: 12px; cursor: pointer; min-width: 70px; }
+        .dialog-btn:hover { background: #e5f1fb; border-color: #0078d7; }
+        .dialog-input { width: 100%; padding: 4px; border: 1px solid #888; margin-bottom: 10px; font-family: 'Calibri'; }
+        .dialog-label { display: block; margin-bottom: 5px; color: #444; }
+
+        /* 游戏状态遮罩 (低调版) */
+        #status-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; pointer-events: none; z-index: 10; }
+        #blocker { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #fff; display: none; } /* 纯白遮挡 */
+        .overlay-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #fff; border: 1px solid #217346; padding: 10px 20px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+
+        /* 画廊模式 */
+        #gallery-view { display: none; width: 100%; height: 100%; flex-wrap: wrap; overflow-y: auto; align-content: flex-start; padding: 10px; background: #f8f9fa; }
+        .gallery-item { width: 120px; height: 120px; border: 1px solid #ccc; margin: 5px; background: #fff; display: flex; flex-direction: column; position: relative; cursor: pointer; transition: transform 0.1s; }
+        .gallery-item:hover { transform: scale(1.05); border-color: #217346; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        .gallery-item img { width: 100%; height: 90px; object-fit: contain; border-bottom: 1px solid #eee; }
+        .gallery-item .answer { height: 30px; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #666; background: #f9f9f9; }
+        .gallery-item.solved .answer { color: #217346; font-weight: bold; background: #e6f4ea; }
+
+        /* 图片查看器 */
+        #image-viewer { background: rgba(0,0,0,0.8); z-index: 10000; }
+        #image-viewer img { max-width: 90%; max-height: 85vh; border: 4px solid #fff; box-shadow: 0 0 20px rgba(0,0,0,0.5); background: #fff; }
     </style>
 </head>
 <body>
 
-<header>
-    <div>
-        <h1>⚡ 极速连画 <span class="tag">地狱版</span></h1>
-        <div style="font-size:12px; color:#666; margin-top:2px;">规则: P2连续画5张(每张2秒)，最后P3抢答</div>
-    </div>
-    <div id="my-role-display" style="font-size:14px;">🔴 未连接</div>
-</header>
-
-<div id="conn-panel">
-    <!-- 第一行：通用设置 -->
-    <div class="conn-row">
-        <label>我的昵称:</label> 
-        <input type="text" id="nickname" value="玩家1" style="width:100px">
-        <select id="role-select">
-            <option value="P2">我想当: 画手 (P2)</option>
-            <option value="P3" selected>我想当: 猜题 (P3)</option>
-            <option value="OBS">仅围观</option>
-        </select>
+    <!-- 顶部绿条 -->
+    <div class="excel-header">
+        <span>文件</span>
+        <span>开始</span>
+        <span>插入</span>
+        <span>页面布局</span>
+        <span>公式</span>
+        <span>数据</span>
+        <span>审阅</span>
+        <span>视图</span>
+        <span style="margin-left: auto; font-size: 12px;">登录</span>
     </div>
 
-    <div class="conn-divider"></div>
+    <!-- 工具栏 -->
+    <div class="ribbon">
+        <div class="ribbon-btn" onclick="document.getElementById('conn-panel').style.display='flex'">
+            <div class="ribbon-icon">🔗</div>
+            <div class="ribbon-text">数据连接</div>
+        </div>
+        <div class="ribbon-btn" id="btn-clear" onclick="clearCanvas()">
+            <div class="ribbon-icon">🧹</div>
+            <div class="ribbon-text">清除内容</div>
+        </div>
+        <div class="ribbon-btn" onclick="resizeCanvas()">
+            <div class="ribbon-icon">🔄</div>
+            <div class="ribbon-text">刷新视图</div>
+        </div>
+        <!-- 仅房主可见的按钮会动态控制显示，这里先放个占位 -->
+        <div class="ribbon-btn" id="host-btn" style="display:none; border: 1px solid #217346; background: #e6f4ea;" onclick="document.getElementById('host-input-modal').style.display='flex'">
+            <div class="ribbon-icon">▶️</div>
+            <div class="ribbon-text">开始计算</div>
+        </div>
+    </div>
 
-    <!-- 第二行：创建或加入 -->
-    <div id="setup-box">
-        <div class="conn-row" style="justify-content: space-between;">
-            <div style="flex:1; display:flex; gap:5px; align-items:center;">
-                <label>房间号:</label>
-                <input type="text" id="room-id-input" placeholder="例如: 888" style="width:100px; font-weight:bold;">
-                <span style="font-size:12px; color:#888;">(数字/字母)</span>
+    <!-- 公式栏 (聊天输入) -->
+    <div class="formula-bar">
+        <div class="name-box" id="timer-display">C5</div>
+        <div class="fx-icon">fx</div>
+        <input type="text" class="formula-input" id="msg-input" placeholder="在此输入数据 (按回车发送)..." onkeypress="if(event.keyCode===13) sendChat()">
+    </div>
+
+    <!-- 主表格 -->
+    <div class="spreadsheet">
+        <!-- 列头 (A, B, C...) -->
+        <div class="col-headers">
+            <div class="col-header" style="width: 180px; flex: none;">A (职员表)</div>
+            <div class="col-header" style="flex: 2;">B (绘图区)</div>
+            <div class="col-header" style="width: 250px; flex: none;">C (日志)</div>
+        </div>
+
+        <!-- 行头 (1, 2, 3...) -->
+        <div class="row-headers">
+            <script>for(let i=1;i<30;i++) document.write(`<div class="row-header">${i}</div>`);</script>
+        </div>
+
+        <!-- 内容网格 -->
+        <div class="grid-content">
+            <!-- 玩家列表 -->
+            <div class="col-a" id="p-list-content">
+                <div class="cell-item header">ID</div>
+                <div class="cell-item" style="color:#999">等待数据...</div>
+            </div>
+
+            <!-- 画布区域 -->
+            <div class="col-b">
+                <div id="canvas-wrapper">
+                    <canvas id="canvas"></canvas>
+                    
+                    <!-- 游戏状态遮罩 -->
+                    <div id="status-overlay">
+                        <div id="blocker"></div> <!-- 纯白遮挡，防止看到画 -->
+                        <div class="overlay-text">
+                            <div id="overlay-text" style="font-size: 14px; color: #333;">准备就绪</div>
+                        </div>
+                    </div>
+
+                    <!-- 画廊 (结算界面) -->
+                    <div id="gallery-view"></div>
+                </div>
+            </div>
+
+            <!-- 聊天记录 -->
+            <div class="col-c" id="messages">
+                <div class="msg-row sys">系统: 欢迎使用 Excel 2024。</div>
             </div>
         </div>
-        <div class="conn-row" style="margin-top:15px; justify-content: center; gap: 20px;">
-            <button onclick="createRoom()" style="background:#28a745; padding: 10px 20px; font-size:16px;">我是房主 (创建)</button>
-            <button onclick="joinRoom()" style="background:#007bff; padding: 10px 20px; font-size:16px;">加入房间</button>
-        </div>
     </div>
-    
-    <!-- 状态显示 -->
-    <div id="connection-status" style="margin-top:10px; text-align:center; font-size:14px; color:#666;"></div>
-</div>
 
-<div id="game-container">
-    <div id="left-panel">
-        <!-- 画布模式 -->
-        <div id="canvas-wrapper">
-            <canvas id="canvas"></canvas>
-            <div id="blocker"></div>
-            <div id="status-overlay" style="display:none;">
-                <div id="overlay-text">等待开始</div>
-                <div id="timer-display"></div>
+    <!-- 底部状态栏 -->
+    <div class="footer-tabs">
+        <div class="sheet-tab">Sheet1</div>
+        <div class="sheet-tab" style="background: #e1e1e1; color: #666; border-bottom: 1px solid #d4d4d4;">Sheet2</div>
+        <div class="sheet-tab" style="background: #e1e1e1; color: #666; border-bottom: 1px solid #d4d4d4;">+</div>
+        <div class="status-bar" id="connection-status">就绪</div>
+        <div class="status-bar" id="my-role-display" style="width: auto; margin-left: 20px;">未连接</div>
+    </div>
+
+    <!-- 弹窗：连接设置 -->
+    <div id="conn-panel" class="modal" style="display: flex;">
+        <div class="excel-dialog">
+            <div class="dialog-header">
+                <span>连接到外部数据源</span>
+                <span style="cursor:pointer" onclick="document.getElementById('conn-panel').style.display='none'">✕</span>
             </div>
-        </div>
-        <!-- 画廊模式 (最后显示) -->
-        <div id="gallery-view"></div>
-
-        <div style="display:flex; gap:10px; justify-content:center; margin-top:5px;">
-            <button onclick="clearCanvas()" id="btn-clear" disabled>清空画板</button>
-        </div>
-    </div>
-
-    <div id="right-panel">
-        <div id="player-list">
-            <div style="font-weight:bold; margin-bottom:5px; border-bottom:1px solid #eee;">玩家列表:</div>
-            <div id="p-list-content">等待加入...</div>
-        </div>
-        <div id="chat-box">
-            <div id="messages"></div>
-            <div id="input-area">
-                <input type="text" id="msg-input" placeholder="输入猜测..." onkeypress="if(event.key==='Enter') sendChat()">
-                <button onclick="sendChat()">发送</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- 房主输入词语的弹窗 -->
-<div id="host-input-modal">
-    <div class="modal-content">
-        <h3 style="margin-top:0">P1 请出题 (5个词)</h3>
-        <input type="text" id="word1" placeholder="词语 1 (如: 苹果)">
-        <input type="text" id="word2" placeholder="词语 2">
-        <input type="text" id="word3" placeholder="词语 3">
-        <input type="text" id="word4" placeholder="词语 4">
-        <input type="text" id="word5" placeholder="词语 5">
-        <div style="display:flex; gap:10px; margin-top:10px;">
-            <button onclick="submitWords()" style="flex:1; background:#dc3545; color:white; font-weight:bold;">开始挑战！</button>
-            <button onclick="document.getElementById('host-input-modal').style.display='none'" style="background:#6c757d;">取消</button>
-        </div>
-    </div>
-</div>
-
-<script>
-    // --- 游戏配置 ---
-    const DRAW_TIME = 2;    // 修改：改为10秒方便测试
-    const PREPARE_TIME = 1;  // 准备时间
-    
-    // --- 状态变量 ---
-    let peer = null;
-    let myId = null;
-    let myName = "玩家";
-    let myRoleTag = "OBS"; // P1, P2, P3, OBS
-    let isHost = false;
-    let connections = []; 
-    let hostConn = null;  
-    
-    // 玩家数据
-    let players = []; 
-    
-    // 游戏数据
-    let gameWords = [];
-    let savedImages = []; 
-    let currentWordIndex = 0;
-    let timerInterval = null;
-    let isGameRunning = false;
-    let isGalleryPhase = false; 
-    let solvedIndices = []; 
-
-    // 画布
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    let isDrawing = false;
-
-    // --- 初始化画布尺寸 ---
-    function resizeCanvas() {
-        const wrapper = document.getElementById('canvas-wrapper');
-        if(wrapper) {
-            canvas.width = wrapper.clientWidth;
-            canvas.height = wrapper.clientHeight;
-        }
-    }
-    window.addEventListener('resize', resizeCanvas);
-    // 页面加载后延迟一下再调整，确保容器已渲染
-    setTimeout(resizeCanvas, 100);
-
-    // --- 辅助函数 ---
-    function getP2() { return players.find(p => p.roleTag === 'P2'); }
-    function hasP3() { return players.some(p => p.roleTag === 'P3'); }
-    function setStatus(html) { document.getElementById('connection-status').innerHTML = html; }
-
-    // --- 1. 网络连接 ---
-    function initPeer(customId) {
-        const peerConfig = {
-            debug: 1,
-            config: {
-                'iceServers': [
-                    { url: 'stun:stun.l.google.com:19302' },
-                    { url: 'stun:stun1.l.google.com:19302' }
-                ]
-            }
-        };
-
-        peer = customId ? new Peer(customId, peerConfig) : new Peer(null, peerConfig);
-        
-        peer.on('open', id => {
-            myId = id;
-            document.getElementById('conn-panel').style.display = 'none';
-            document.getElementById('my-role-display').innerHTML = `我是: <b>${myName}</b> | 房间号: <span style="color:blue">${id}</span>`;
-            addMsg('系统', `✅ 连接成功！房间号：${id}`, true);
-            resizeCanvas(); // 连接成功后再调整一次画布
-        });
-
-        peer.on('error', err => {
-            console.error(err);
-            let msg = "连接错误";
-            if (err.type === 'unavailable-id') msg = "❌ 房间号已被占用！";
-            if (err.type === 'peer-unavailable') msg = "❌ 找不到房间！";
-            setStatus(`<span style="color:red">${msg}</span>`);
-        });
-
-        peer.on('disconnected', () => {
-             addMsg('系统', '⚠️ 断开，尝试重连...', true);
-             peer.reconnect();
-        });
-    }
-
-    function keepAlive(conn) {
-        const pingInterval = setInterval(() => {
-            if (conn && conn.open) conn.send({ type: 'ping' });
-            else clearInterval(pingInterval);
-        }, 5000);
-    }
-
-    function createRoom() {
-        const roomId = document.getElementById('room-id-input').value.trim();
-        if(!roomId) return setStatus('<span style="color:red">请输入房间号！</span>');
-        
-        myName = document.getElementById('nickname').value + " (房主)";
-        isHost = true;
-        myRoleTag = 'P1';
-        
-        setStatus('正在创建房间...');
-        initPeer(roomId);
-        
-        players = [{ id: 'HOST', name: myName, roleName: '出题者(P1)', roleTag: 'P1' }];
-        updateUI();
-        
-        setTimeout(() => {
-            if(peer) {
-                peer.on('connection', conn => {
-                    conn.on('open', () => {
-                        connections.push(conn);
-                        keepAlive(conn);
-                        conn.on('data', data => handleHostData(data, conn));
-                        conn.on('close', () => {
-                            connections = connections.filter(c => c !== conn);
-                            players = players.filter(p => p.id !== conn.peer);
-                            broadcast({ type: 'update_players', players: players });
-                        });
-                        // 同步当前画布给新玩家（如果在等待阶段）
-                        if(!isGameRunning) {
-                            const img = canvas.toDataURL();
-                            conn.send({type: 'sync_canvas', img: img});
-                        }
-                    });
-                });
-            }
-        }, 100);
-    }
-
-    function joinRoom() {
-        const roomId = document.getElementById('room-id-input').value.trim();
-        if(!roomId) return setStatus('<span style="color:red">请输入房间号！</span>');
-        
-        myName = document.getElementById('nickname').value;
-        const roleReq = document.getElementById('role-select').value;
-        
-        isHost = false;
-        setStatus('正在连接服务器...');
-        initPeer(null); 
-
-        const checkPeerOpen = setInterval(() => {
-            if (peer && !peer.disconnected && !peer.destroyed && myId) {
-                clearInterval(checkPeerOpen);
-                setStatus(`正在加入房间 ${roomId}...`);
-                hostConn = peer.connect(roomId);
-                hostConn.on('open', () => {
-                    setStatus('<span style="color:green">已连接！</span>');
-                    keepAlive(hostConn);
-                    hostConn.send({ type: 'join', name: myName, roleReq: roleReq });
-                });
-                hostConn.on('data', handleClientData);
-                hostConn.on('close', () => { alert("与房主断开连接！"); location.reload(); });
-            }
-        }, 500);
-    }
-
-    // --- 2. 房主逻辑 ---
-
-    function handleHostData(data, conn) {
-        if (data.type === 'ping') return;
-
-        if (data.type === 'join') {
-            let assignedRoleName = '观众';
-            let assignedRoleTag = 'OBS';
-            let warningMsg = '';
-            const isP2Taken = players.some(p => p.roleTag === 'P2');
-            
-            if (data.roleReq === 'P2') {
-                if (!isP2Taken) { assignedRoleName = '画手 (P2)'; assignedRoleTag = 'P2'; } 
-                else { warningMsg = '(P2已满)'; }
-            } else if (data.roleReq === 'P3') {
-                assignedRoleName = '猜题 (P3)'; assignedRoleTag = 'P3';
-            }
-
-            players = players.filter(p => p.id !== conn.peer);
-            players.push({ id: conn.peer, name: data.name, roleName: assignedRoleName, roleTag: assignedRoleTag });
-            
-            broadcast({ type: 'update_players', players: players });
-            broadcast({ type: 'chat', name: '系统', msg: `${data.name} 加入 ${warningMsg}`, isSys: true });
-            conn.send({ type: 'you_are', roleTag: assignedRoleTag });
-
-            if (getP2() && hasP3() && !isGameRunning) {
-                document.getElementById('host-input-modal').style.display = 'flex';
-            }
-        }
-        
-        // 修改：允许非游戏状态下的自由绘画，或者游戏状态下的P2绘画
-        if (data.type === 'draw' || data.type === 'clear') {
-            const p2 = getP2();
-            const isSenderP2 = (p2 && conn.peer === p2.id);
-            
-            // 允许绘制的条件：游戏未开始 OR 发送者是P2
-            if (!isGameRunning || isSenderP2) {
-                if(data.type === 'draw') drawLocal(data.x, data.y, data.isStart);
-                else ctx.clearRect(0,0,canvas.width, canvas.height);
+            <div class="dialog-body">
+                <label class="dialog-label">用户名 (User ID):</label>
+                <input type="text" id="nickname" class="dialog-input" value="Employee_01">
                 
-                // 转发给其他人
-                connections.forEach(c => {
-                    if(c.peer !== conn.peer) c.send(data);
-                });
-            }
-        }
+                <label class="dialog-label">服务器地址 (Room ID):</label>
+                <input type="text" id="room-id-input" class="dialog-input" placeholder="例如: 1001">
 
-        if (data.type === 'chat') {
-            broadcast({ type: 'chat', name: data.name, msg: data.msg });
-            if (isGalleryPhase) checkGuess(data.msg, data.name);
-        }
-    }
+                <label class="dialog-label">角色请求 (Role):</label>
+                <select id="role-select" class="dialog-input">
+                    <option value="OBS">观众 (Observer)</option>
+                    <option value="P2">绘图员 (P2)</option>
+                    <option value="P3">审核员 (P3)</option>
+                </select>
 
-    function submitWords() {
-        if(!getP2() || !hasP3()) return alert("需要 P2(画手) 和 P3(猜题) 才能开始！");
-        const inputs = [1,2,3,4,5].map(i => document.getElementById('word'+i).value.trim());
-        if (inputs.some(w => !w)) return alert("请填满5个词！");
-        
-        gameWords = inputs;
-        savedImages = [];
-        solvedIndices = [];
-        document.getElementById('host-input-modal').style.display = 'none';
-        
-        isGameRunning = true;
-        isGalleryPhase = false;
-        currentWordIndex = -1;
-        
-        broadcast({ type: 'chat', name: '系统', msg: `🎮 游戏开始！`, isSys: true });
-        nextWord();
-    }
-
-    function nextWord() {
-        currentWordIndex++;
-        clearInterval(timerInterval);
-
-        if (currentWordIndex >= 5) {
-            startGalleryPhase();
-            return;
-        }
-
-        const word = gameWords[currentWordIndex];
-        let prepTime = PREPARE_TIME;
-        broadcastState('prepare', word, prepTime); 
-        
-        timerInterval = setInterval(() => {
-            prepTime--;
-            if (prepTime > 0) {
-                broadcastState('prepare', word, prepTime);
-            } else {
-                clearInterval(timerInterval);
-                startDrawingPhase(word);
-            }
-        }, 1000);
-    }
-
-    function startDrawingPhase(word) {
-        ctx.clearRect(0,0,canvas.width, canvas.height);
-        broadcast({ type: 'clear' }, 'HOST'); // 清空所有人画板
-
-        let drawTime = DRAW_TIME;
-        broadcastState('drawing', word, drawTime);
-
-        timerInterval = setInterval(() => {
-            drawTime--;
-            if (drawTime >= 0) {
-                broadcastState('drawing', word, drawTime);
-            } else {
-                clearInterval(timerInterval);
-                const imgData = canvas.toDataURL("image/png");
-                savedImages.push(imgData);
-                broadcast({ type: 'chat', name: '系统', msg: `📸 图 ${currentWordIndex+1} 已保存`, isSys: true });
-                setTimeout(nextWord, 1000);
-            }
-        }, 1000);
-    }
-
-    function startGalleryPhase() {
-        isGalleryPhase = true;
-        isGameRunning = false; // 游戏逻辑结束，进入看图模式
-        broadcast({ type: 'chat', name: '系统', msg: '🔥 抢答开始！', isSys: true });
-        const galleryData = { type: 'show_gallery', images: savedImages };
-        broadcast(galleryData, 'HOST'); 
-        handleClientData(galleryData); 
-    }
-
-    function checkGuess(msg, playerName) {
-        gameWords.forEach((word, idx) => {
-            if (solvedIndices.includes(idx)) return;
-            if (msg.includes(word)) {
-                solvedIndices.push(idx);
-                const winMsg = `🎉 ${playerName} 答对第 ${idx+1} 题：【${word}】`;
-                broadcast({ type: 'solve_word', index: idx, word: word, msg: winMsg });
-                updateGalleryItem(idx, word);
-                addMsg('系统', winMsg, false, true);
-            }
-        });
-    }
-
-    function broadcastState(phase, word, time) {
-        const data = { type: 'state_update', phase: phase, time: time, word: word, index: currentWordIndex + 1 };
-        updateGameUI(data); 
-        connections.forEach(conn => {
-            const p = players.find(pl => pl.id === conn.peer);
-            if (!p) return;
-            if (p.roleTag === 'P3' || p.roleTag === 'OBS') conn.send({...data, word: '???'});
-            else conn.send(data);
-        });
-    }
-
-    function broadcast(data, excludeId) {
-        connections.forEach(c => { if(c.peer !== excludeId) c.send(data); });
-        if (isHost && excludeId !== 'HOST') {
-            if(data.type === 'update_players') updateUI();
-            if(data.type === 'chat') addMsg(data.name, data.msg, data.isSys, data.isWin);
-        }
-    }
-
-    // --- 3. 客户端逻辑 ---
-
-    function handleClientData(data) {
-        if (data.type === 'ping') return;
-        if (data.type === 'you_are') {
-            myRoleTag = data.roleTag; 
-            document.getElementById('my-role-display').innerHTML += ` | 角色: <b>${data.roleTag}</b>`;
-        }
-        if (data.type === 'update_players') { players = data.players; updateUI(); }
-        if (data.type === 'chat') addMsg(data.name, data.msg, data.isSys, data.isWin);
-        if (data.type === 'draw') drawLocal(data.x, data.y, data.isStart);
-        if (data.type === 'clear') ctx.clearRect(0,0,canvas.width, canvas.height);
-        if (data.type === 'state_update') updateGameUI(data);
-        if (data.type === 'show_gallery') renderGallery(data.images);
-        if (data.type === 'solve_word') { updateGalleryItem(data.index, data.word); addMsg('系统', data.msg, false, true); }
-        if (data.type === 'sync_canvas') {
-            const img = new Image();
-            img.onload = () => ctx.drawImage(img, 0, 0);
-            img.src = data.img;
-        }
-    }
-
-    // --- 4. UI 更新 ---
-
-    function renderGallery(images) {
-        document.getElementById('canvas-wrapper').style.display = 'none';
-        const gView = document.getElementById('gallery-view');
-        gView.style.display = 'flex';
-        gView.innerHTML = images.map((src, i) => `
-            <div class="gallery-item" id="g-item-${i}">
-                <div class="label">#${i+1}</div>
-                <img src="${src}">
-                <div class="answer" id="ans-${i}">???</div>
+                <div style="margin-top: 15px; border-top: 1px solid #eee; padding-top: 10px;">
+                    <span style="font-size: 11px; color: #666;">操作:</span>
+                    <div style="display: flex; gap: 10px; margin-top: 5px;">
+                        <button class="dialog-btn" onclick="createRoom()">新建连接 (房主)</button>
+                        <button class="dialog-btn" onclick="joinRoom()">连接现有 (加入)</button>
+                    </div>
+                </div>
             </div>
-        `).join('');
-    }
+        </div>
+    </div>
 
-    function updateGalleryItem(index, word) {
-        const item = document.getElementById(`g-item-${index}`);
-        const ans = document.getElementById(`ans-${index}`);
-        if(item && ans) { item.classList.add('solved'); ans.innerText = word; }
-    }
-
-    function updateUI() {
-        const html = players.map(p => `
-            <div class="p-card">
-                <span>${p.name} ${p.id===(isHost?'HOST':myId) ? '(我)':''}</span>
-                <span class="role-badge role-${p.roleTag}">${p.roleName}</span>
+    <!-- 弹窗：房主出题 -->
+    <div id="host-input-modal" class="modal">
+        <div class="excel-dialog">
+            <div class="dialog-header">
+                <span>输入参数 (题目设置)</span>
             </div>
-        `).join('');
-        document.getElementById('p-list-content').innerHTML = html;
-        
-        // 按钮状态更新：游戏未开始时，大家都可以清空
-        const btnClear = document.getElementById('btn-clear');
-        if (!isGameRunning) btnClear.disabled = false;
-        else btnClear.disabled = (myRoleTag !== 'P2');
-    }
+            <div class="dialog-body">
+                <p style="margin: 0 0 10px 0; color: #666;">请输入5个待处理的数据项：</p>
+                <input type="text" id="word1" class="dialog-input" placeholder="数据项 1">
+                <input type="text" id="word2" class="dialog-input" placeholder="数据项 2">
+                <input type="text" id="word3" class="dialog-input" placeholder="数据项 3">
+                <input type="text" id="word4" class="dialog-input" placeholder="数据项 4">
+                <input type="text" id="word5" class="dialog-input" placeholder="数据项 5">
+            </div>
+            <div class="dialog-footer">
+                <button class="dialog-btn" onclick="submitWords()">确定</button>
+            </div>
+        </div>
+    </div>
 
-    function updateGameUI(data) {
-        document.getElementById('canvas-wrapper').style.display = 'flex';
-        document.getElementById('gallery-view').style.display = 'none';
-        const overlay = document.getElementById('status-overlay');
-        const text = document.getElementById('overlay-text');
-        const timer = document.getElementById('timer-display');
-        const blocker = document.getElementById('blocker');
-        
-        overlay.style.display = 'block';
-        timer.innerText = data.time;
-        
-        const amIDrawer = (myRoleTag === 'P2');
+    <!-- 新增：图片查看器 -->
+    <div id="image-viewer" class="modal" onclick="this.style.display='none'">
+        <div style="display:flex; flex-direction:column; align-items:center;">
+            <img id="zoomed-img" src="">
+            <div style="color:white; margin-top:10px; font-size:14px; background:rgba(0,0,0,0.5); padding:5px 10px; border-radius:4px;">点击任意处关闭</div>
+        </div>
+    </div>
 
-        if (data.phase === 'prepare') {
-            overlay.style.background = 'rgba(0,0,0,0.9)';
-            text.innerHTML = `第 ${data.index}/5 题<br>准备! 题目: <span style="color:#ff5722; font-size:24px">${data.word}</span>`;
-            blocker.style.display = 'block'; 
-        } else if (data.phase === 'drawing') {
-            if (amIDrawer) {
-                overlay.style.background = 'rgba(0,128,0,0.1)'; 
-                overlay.style.pointerEvents = 'none';
-                text.innerHTML = `🔥 画: ${data.word}`;
-                timer.style.color = 'red';
-                blocker.style.display = 'none';
-            } else {
-                overlay.style.background = 'rgba(0,0,0,0.95)'; 
-                text.innerHTML = `P2 正在作画... (第 ${data.index} 张)`;
-                blocker.style.display = 'block';
+    <script>
+        // --- 游戏配置 ---
+        const DRAW_TIME = 2;    
+        const PREPARE_TIME = 1;  
+        
+        // --- 状态变量 ---
+        let peer = null;
+        let myId = null;
+        let myName = "Employee";
+        let myRoleTag = "OBS"; 
+        let isHost = false;
+        let connections = []; 
+        let hostConn = null;  
+        
+        let players = []; 
+        let gameWords = [];
+        let savedImages = []; 
+        let currentWordIndex = 0;
+        let timerInterval = null;
+        let isGameRunning = false;
+        let isGalleryPhase = false; 
+        let solvedIndices = []; 
+
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let isDrawing = false;
+
+        // --- 初始化画布尺寸 ---
+        function resizeCanvas() {
+            const wrapper = document.getElementById('canvas-wrapper');
+            if(wrapper) {
+                // 确保画布大小匹配容器，避免拉伸
+                canvas.width = wrapper.clientWidth;
+                canvas.height = wrapper.clientHeight;
+                // 如果有内容需要重绘，这里可以加逻辑，目前简单处理清空
             }
         }
-    }
+        window.addEventListener('resize', resizeCanvas);
+        setTimeout(resizeCanvas, 100);
 
-    function addMsg(name, msg, isSys, isWin) {
-        const div = document.createElement('div');
-        div.className = `msg ${isSys?'sys':''} ${isWin?'win':''}`;
-        div.innerHTML = (isSys||isWin) ? msg : `<b>${name}:</b> ${msg}`;
-        const box = document.getElementById('messages');
-        box.appendChild(div);
-        box.scrollTop = box.scrollHeight;
-    }
+        // --- 辅助函数 ---
+        function getP2() { return players.find(p => p.roleTag === 'P2'); }
+        function hasP3() { return players.some(p => p.roleTag === 'P3'); }
+        function setStatus(text) { document.getElementById('connection-status').innerHTML = text; }
 
-    function sendChat() {
-        const input = document.getElementById('msg-input');
-        const val = input.value.trim();
-        if(!val) return;
-        if (isHost) {
-            broadcast({ type: 'chat', name: myName, msg: val });
-            if(isGalleryPhase) checkGuess(val, myName);
-            addMsg(myName, val);
-        } else {
-            if(hostConn && hostConn.open) hostConn.send({ type: 'chat', msg: val, name: myName });
-        }
-        input.value = '';
-    }
+        // --- 1. 网络连接 ---
+        function initPeer(customId) {
+            const peerConfig = {
+                debug: 1,
+                config: { 'iceServers': [{ url: 'stun:stun.l.google.com:19302' }] }
+            };
 
-    // --- 5. 画板逻辑 (修改版) ---
-    function getPos(e) {
-        const rect = canvas.getBoundingClientRect();
-        const t = e.changedTouches ? e.changedTouches[0] : e;
-        return { 
-            x: (t.clientX - rect.left) / canvas.width, 
-            y: (t.clientY - rect.top) / canvas.height 
-        };
-    }
-
-    function startDraw(e) {
-        // 修改：允许在游戏未开始时，或者游戏进行中且我是P2时绘画
-        const canDraw = (!isGameRunning) || (isGameRunning && myRoleTag === 'P2');
-        
-        if (!isDrawing && canDraw) { 
-            isDrawing = true;
-            const p = getPos(e);
-            drawLocal(p.x, p.y, true);
+            peer = customId ? new Peer(customId, peerConfig) : new Peer(null, peerConfig);
             
-            const drawData = { type: 'draw', x: p.x, y: p.y, isStart: true };
-            if(!isHost) hostConn.send(drawData);
-            else broadcast(drawData, 'HOST'); // 房主在等待大厅画画时广播给别人
+            peer.on('open', id => {
+                myId = id;
+                document.getElementById('conn-panel').style.display = 'none';
+                document.getElementById('my-role-display').innerHTML = `用户: <b>${myName}</b> | 端口: ${id}`;
+                addMsg('系统', `✅ 连接成功。端口号：${id}`, true);
+                if(isHost) document.getElementById('host-btn').style.display = 'flex';
+                resizeCanvas();
+            });
+
+            peer.on('error', err => {
+                console.error(err);
+                setStatus(`<span style="color:red">错误: ${err.type}</span>`);
+            });
+
+            peer.on('disconnected', () => {
+                 addMsg('系统', '⚠️ 连接中断，正在重试...', true);
+                 peer.reconnect();
+            });
         }
-    }
 
-    function moveDraw(e) {
-        if (!isDrawing) return;
-        e.preventDefault();
-        const p = getPos(e);
-        drawLocal(p.x, p.y, false);
-        
-        const drawData = { type: 'draw', x: p.x, y: p.y, isStart: false };
-        if(!isHost) hostConn.send(drawData);
-        else broadcast(drawData, 'HOST');
-    }
+        function keepAlive(conn) {
+            const pingInterval = setInterval(() => {
+                if (conn && conn.open) conn.send({ type: 'ping' });
+                else clearInterval(pingInterval);
+            }, 5000);
+        }
 
-    function stopDraw() { isDrawing = false; }
+        function createRoom() {
+            const roomId = document.getElementById('room-id-input').value.trim();
+            if(!roomId) return alert("请输入端口号(房间号)！");
+            
+            myName = document.getElementById('nickname').value + " (Admin)";
+            isHost = true;
+            myRoleTag = 'P1';
+            
+            setStatus('正在初始化...');
+            initPeer(roomId);
+            
+            players = [{ id: 'HOST', name: myName, roleName: '管理员(P1)', roleTag: 'P1' }];
+            updateUI();
+            
+            setTimeout(() => {
+                if(peer) {
+                    peer.on('connection', conn => {
+                        conn.on('open', () => {
+                            connections.push(conn);
+                            keepAlive(conn);
+                            conn.on('data', data => handleHostData(data, conn));
+                            conn.on('close', () => {
+                                connections = connections.filter(c => c !== conn);
+                                players = players.filter(p => p.id !== conn.peer);
+                                broadcast({ type: 'update_players', players: players });
+                            });
+                            if(!isGameRunning) {
+                                const img = canvas.toDataURL();
+                                conn.send({type: 'sync_canvas', img: img});
+                            }
+                        });
+                    });
+                }
+            }, 100);
+        }
 
-    function drawLocal(x, y, isStart) {
-        const actualX = x * canvas.width;
-        const actualY = y * canvas.height;
-        ctx.lineWidth = 4;
-        ctx.lineCap = 'round';
-        ctx.strokeStyle = '#000';
-        if (isStart) { ctx.beginPath(); ctx.moveTo(actualX, actualY); }
-        else { ctx.lineTo(actualX, actualY); ctx.stroke(); }
-    }
-    
-    function clearCanvas() {
-        // 修改：游戏未开始时允许任何人清空
-        if (!isGameRunning || myRoleTag === 'P2') {
+        function joinRoom() {
+            const roomId = document.getElementById('room-id-input').value.trim();
+            if(!roomId) return alert("请输入端口号！");
+            
+            myName = document.getElementById('nickname').value;
+            const roleReq = document.getElementById('role-select').value;
+            
+            isHost = false;
+            setStatus('正在连接...');
+            initPeer(null); 
+
+            const checkPeerOpen = setInterval(() => {
+                if (peer && !peer.disconnected && !peer.destroyed && myId) {
+                    clearInterval(checkPeerOpen);
+                    setStatus(`正在连接端口 ${roomId}...`);
+                    hostConn = peer.connect(roomId);
+                    hostConn.on('open', () => {
+                        setStatus('<span style="color:green">已连接</span>');
+                        keepAlive(hostConn);
+                        hostConn.send({ type: 'join', name: myName, roleReq: roleReq });
+                    });
+                    hostConn.on('data', handleClientData);
+                    hostConn.on('close', () => { alert("连接已断开"); location.reload(); });
+                }
+            }, 500);
+        }
+
+        // --- 2. 房主逻辑 ---
+        function handleHostData(data, conn) {
+            if (data.type === 'ping') return;
+
+            if (data.type === 'join') {
+                let assignedRoleName = '观察员';
+                let assignedRoleTag = 'OBS';
+                const isP2Taken = players.some(p => p.roleTag === 'P2');
+                
+                if (data.roleReq === 'P2') {
+                    if (!isP2Taken) { assignedRoleName = '绘图员 (P2)'; assignedRoleTag = 'P2'; } 
+                } else if (data.roleReq === 'P3') {
+                    assignedRoleName = '审核员 (P3)'; assignedRoleTag = 'P3';
+                }
+
+                players = players.filter(p => p.id !== conn.peer);
+                players.push({ id: conn.peer, name: data.name, roleName: assignedRoleName, roleTag: assignedRoleTag });
+                
+                broadcast({ type: 'update_players', players: players });
+                broadcast({ type: 'chat', name: '系统', msg: `${data.name} 已接入`, isSys: true });
+                conn.send({ type: 'you_are', roleTag: assignedRoleTag });
+
+                if (getP2() && hasP3() && !isGameRunning) {
+                    document.getElementById('host-input-modal').style.display = 'flex';
+                }
+            }
+            
+            if (data.type === 'draw' || data.type === 'clear') {
+                const p2 = getP2();
+                const isSenderP2 = (p2 && conn.peer === p2.id);
+                if (!isGameRunning || isSenderP2) {
+                    if(data.type === 'draw') drawLocal(data.x, data.y, data.isStart);
+                    else ctx.clearRect(0,0,canvas.width, canvas.height);
+                    
+                    connections.forEach(c => {
+                        if(c.peer !== conn.peer) c.send(data);
+                    });
+                }
+            }
+
+            if (data.type === 'chat') {
+                broadcast({ type: 'chat', name: data.name, msg: data.msg });
+                if (isGalleryPhase) checkGuess(data.msg, data.name);
+            }
+        }
+
+        function submitWords() {
+            if(!getP2() || !hasP3()) return alert("人员配置不完整 (需 P2, P3)");
+            const inputs = [1,2,3,4,5].map(i => document.getElementById('word'+i).value.trim());
+            if (inputs.some(w => !w)) return alert("数据不完整");
+            
+            gameWords = inputs;
+            savedImages = [];
+            solvedIndices = [];
+            document.getElementById('host-input-modal').style.display = 'none';
+            
+            isGameRunning = true;
+            isGalleryPhase = false;
+            currentWordIndex = -1;
+            
+            broadcast({ type: 'chat', name: '系统', msg: `📊 任务开始`, isSys: true });
+            nextWord();
+        }
+
+        function nextWord() {
+            currentWordIndex++;
+            clearInterval(timerInterval);
+
+            if (currentWordIndex >= 5) {
+                startGalleryPhase();
+                return;
+            }
+
+            const word = gameWords[currentWordIndex];
+            let prepTime = PREPARE_TIME;
+            broadcastState('prepare', word, prepTime); 
+            
+            timerInterval = setInterval(() => {
+                prepTime--;
+                if (prepTime > 0) {
+                    broadcastState('prepare', word, prepTime);
+                } else {
+                    clearInterval(timerInterval);
+                    startDrawingPhase(word);
+                }
+            }, 1000);
+        }
+
+        function startDrawingPhase(word) {
             ctx.clearRect(0,0,canvas.width, canvas.height);
-            const data = { type: 'clear' };
-            if(!isHost) hostConn.send(data);
-            else broadcast(data, 'HOST');
+            broadcast({ type: 'clear' }, 'HOST'); 
+
+            let drawTime = DRAW_TIME;
+            broadcastState('drawing', word, drawTime);
+
+            timerInterval = setInterval(() => {
+                drawTime--;
+                if (drawTime >= 0) {
+                    broadcastState('drawing', word, drawTime);
+                } else {
+                    clearInterval(timerInterval);
+                    const imgData = canvas.toDataURL("image/png");
+                    savedImages.push(imgData);
+                    broadcast({ type: 'chat', name: '系统', msg: `💾 数据 ${currentWordIndex+1} 已归档`, isSys: true });
+                    setTimeout(nextWord, 1000);
+                }
+            }, 1000);
         }
-    }
 
-    canvas.addEventListener('mousedown', startDraw);
-    canvas.addEventListener('mousemove', moveDraw);
-    canvas.addEventListener('mouseup', stopDraw);
-    canvas.addEventListener('mouseout', stopDraw);
-    canvas.addEventListener('touchstart', startDraw, {passive: false});
-    canvas.addEventListener('touchmove', moveDraw, {passive: false});
-    canvas.addEventListener('touchend', stopDraw);
-</script>
+        function startGalleryPhase() {
+            isGalleryPhase = true;
+            isGameRunning = false; 
+            broadcast({ type: 'chat', name: '系统', msg: '🔥 请审核数据 (抢答)', isSys: true });
+            const galleryData = { type: 'show_gallery', images: savedImages };
+            broadcast(galleryData, 'HOST'); 
+            handleClientData(galleryData); 
+        }
 
+        function checkGuess(msg, playerName) {
+            gameWords.forEach((word, idx) => {
+                if (solvedIndices.includes(idx)) return;
+                if (msg.includes(word)) {
+                    solvedIndices.push(idx);
+                    const winMsg = `✔️ ${playerName} 确认数据 ${idx+1}：【${word}】`;
+                    broadcast({ type: 'solve_word', index: idx, word: word, msg: winMsg });
+                    updateGalleryItem(idx, word);
+                    addMsg('系统', winMsg, false, true);
+                }
+            });
+        }
+
+        function broadcastState(phase, word, time) {
+            const data = { type: 'state_update', phase: phase, time: time, word: word, index: currentWordIndex + 1 };
+            updateGameUI(data); 
+            connections.forEach(conn => {
+                const p = players.find(pl => pl.id === conn.peer);
+                if (!p) return;
+                if (p.roleTag === 'P3' || p.roleTag === 'OBS') conn.send({...data, word: '???'});
+                else conn.send(data);
+            });
+        }
+
+        function broadcast(data, excludeId) {
+            connections.forEach(c => { if(c.peer !== excludeId) c.send(data); });
+            if (isHost && excludeId !== 'HOST') {
+                if(data.type === 'update_players') updateUI();
+                if(data.type === 'chat') addMsg(data.name, data.msg, data.isSys, data.isWin);
+            }
+        }
+
+        // --- 3. 客户端逻辑 ---
+        function handleClientData(data) {
+            if (data.type === 'ping') return;
+            if (data.type === 'you_are') {
+                myRoleTag = data.roleTag; 
+                document.getElementById('my-role-display').innerHTML += ` | 角色: <b>${data.roleTag}</b>`;
+            }
+            if (data.type === 'update_players') { players = data.players; updateUI(); }
+            if (data.type === 'chat') addMsg(data.name, data.msg, data.isSys, data.isWin);
+            if (data.type === 'draw') drawLocal(data.x, data.y, data.isStart);
+            if (data.type === 'clear') ctx.clearRect(0,0,canvas.width, canvas.height);
+            if (data.type === 'state_update') updateGameUI(data);
+            if (data.type === 'show_gallery') renderGallery(data.images);
+            if (data.type === 'solve_word') { updateGalleryItem(data.index, data.word); addMsg('系统', data.msg, false, true); }
+            if (data.type === 'sync_canvas') {
+                const img = new Image();
+                img.onload = () => ctx.drawImage(img, 0, 0);
+                img.src = data.img;
+            }
+        }
+
+        // --- 4. UI 更新 ---
+        function renderGallery(images) {
+            document.getElementById('canvas-wrapper').style.border = 'none'; // 隐藏绿框
+            document.getElementById('canvas').style.display = 'none';
+            document.getElementById('status-overlay').style.display = 'none';
+            
+            const gView = document.getElementById('gallery-view');
+            gView.style.display = 'flex';
+            // 修改了这里：添加了 onclick 事件
+            gView.innerHTML = images.map((src, i) => `
+                <div class="gallery-item" id="g-item-${i}" onclick="viewImage('${src}')" title="点击放大">
+                    <img src="${src}">
+                    <div class="answer" id="ans-${i}">#ERR!</div>
+                </div>
+            `).join('');
+        }
+
+        // 新增：查看大图函数
+        function viewImage(src) {
+            document.getElementById('zoomed-img').src = src;
+            document.getElementById('image-viewer').style.display = 'flex';
+        }
+
+        function updateGalleryItem(index, word) {
+            const item = document.getElementById(`g-item-${index}`);
+            const ans = document.getElementById(`ans-${index}`);
+            if(item && ans) { item.classList.add('solved'); ans.innerText = word; }
+        }
+
+        function updateUI() {
+            const html = players.map(p => `
+                <div class="cell-item">
+                    <span style="width:20px; text-align:center; color:#999; margin-right:5px;">${p.roleTag}</span>
+                    <span>${p.name}</span>
+                </div>
+            `).join('');
+            document.getElementById('p-list-content').innerHTML = `<div class="cell-item header">ID</div>` + html;
+            
+            const btnClear = document.getElementById('btn-clear');
+            if (!isGameRunning) btnClear.disabled = false;
+            else btnClear.disabled = (myRoleTag !== 'P2');
+        }
+
+        function updateGameUI(data) {
+            document.getElementById('canvas').style.display = 'block';
+            document.getElementById('gallery-view').style.display = 'none';
+            document.getElementById('canvas-wrapper').style.border = '2px solid #217346';
+            
+            const overlay = document.getElementById('status-overlay');
+            const text = document.getElementById('overlay-text');
+            const timer = document.getElementById('timer-display');
+            const blocker = document.getElementById('blocker');
+            
+            overlay.style.display = 'block';
+            timer.innerText = data.time + 's';
+            
+            const amIDrawer = (myRoleTag === 'P2');
+
+            if (data.phase === 'prepare') {
+                text.innerHTML = `数据项 ${data.index}/5 <br>准备: <span style="font-weight:bold">${data.word}</span>`;
+                blocker.style.display = 'block'; 
+            } else if (data.phase === 'drawing') {
+                if (amIDrawer) {
+                    overlay.style.display = 'none'; // 画手不显示遮罩
+                    blocker.style.display = 'none';
+                    timer.style.color = 'red';
+                } else {
+                    text.innerHTML = `正在生成图表... (No. ${data.index})`;
+                    blocker.style.display = 'block'; // 遮住画板，只看倒计时
+                }
+            }
+        }
+
+        function addMsg(name, msg, isSys, isWin) {
+            const div = document.createElement('div');
+            div.className = `msg-row ${isSys?'sys':''} ${isWin?'win':''}`;
+            div.innerHTML = (isSys||isWin) ? msg : `<b>${name}:</b> ${msg}`;
+            const box = document.getElementById('messages');
+            box.appendChild(div);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function sendChat() {
+            const input = document.getElementById('msg-input');
+            const val = input.value.trim();
+            if(!val) return;
+            if (isHost) {
+                broadcast({ type: 'chat', name: myName, msg: val });
+                if(isGalleryPhase) checkGuess(val, myName);
+                addMsg(myName, val);
+            } else {
+                if(hostConn && hostConn.open) hostConn.send({ type: 'chat', msg: val, name: myName });
+            }
+            input.value = '';
+        }
+
+        // --- 5. 画板逻辑 ---
+        function getPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const t = e.changedTouches ? e.changedTouches[0] : e;
+            return { 
+                x: (t.clientX - rect.left) / canvas.width, 
+                y: (t.clientY - rect.top) / canvas.height 
+            };
+        }
+
+        function startDraw(e) {
+            const canDraw = (!isGameRunning) || (isGameRunning && myRoleTag === 'P2');
+            if (!isDrawing && canDraw) { 
+                isDrawing = true;
+                const p = getPos(e);
+                drawLocal(p.x, p.y, true);
+                
+                const drawData = { type: 'draw', x: p.x, y: p.y, isStart: true };
+                if(!isHost) hostConn.send(drawData);
+                else broadcast(drawData, 'HOST');
+            }
+        }
+
+        function moveDraw(e) {
+            if (!isDrawing) return;
+            e.preventDefault();
+            const p = getPos(e);
+            drawLocal(p.x, p.y, false);
+            
+            const drawData = { type: 'draw', x: p.x, y: p.y, isStart: false };
+            if(!isHost) hostConn.send(drawData);
+            else broadcast(drawData, 'HOST');
+        }
+
+        function stopDraw() { isDrawing = false; }
+
+        function drawLocal(x, y, isStart) {
+            const actualX = x * canvas.width;
+            const actualY = y * canvas.height;
+            ctx.lineWidth = 2; // 笔触细一点，像签字笔
+            ctx.lineCap = 'round';
+            ctx.strokeStyle = '#000';
+            if (isStart) { ctx.beginPath(); ctx.moveTo(actualX, actualY); }
+            else { ctx.lineTo(actualX, actualY); ctx.stroke(); }
+        }
+        
+        function clearCanvas() {
+            if (!isGameRunning || myRoleTag === 'P2') {
+                ctx.clearRect(0,0,canvas.width, canvas.height);
+                const data = { type: 'clear' };
+                if(!isHost) hostConn.send(data);
+                else broadcast(data, 'HOST');
+            }
+        }
+
+        canvas.addEventListener('mousedown', startDraw);
+        canvas.addEventListener('mousemove', moveDraw);
+        canvas.addEventListener('mouseup', stopDraw);
+        canvas.addEventListener('mouseout', stopDraw);
+        canvas.addEventListener('touchstart', startDraw, {passive: false});
+        canvas.addEventListener('touchmove', moveDraw, {passive: false});
+        canvas.addEventListener('touchend', stopDraw);
+    </script>
 </body>
 </html>
