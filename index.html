@@ -26,7 +26,11 @@ body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family:
 /* 公式栏 (聊天输入) */
 .formula-bar { background: #fff; height: 28px; display: flex; align-items: center; padding: 2px 5px; border-bottom: 1px solid #e1e1e1; }
 .name-box { width: 60px; height: 100%; border: 1px solid #d4d4d4; display: flex; align-items: center; justify-content: center; background: #fff; margin-right: 5px; color: #666; font-size: 12px; }
-.fx-icon { width: 30px; text-align: center; color: #999; font-style: italic; font-family: serif; font-weight: bold; }
+.fx-icon { width: 30px; text-align: center; color: #999; font-style: italic; font-family: serif; font-weight: bold; border-right: 1px solid #e1e1e1; margin-right: 5px; cursor: default; }
+
+/* 新增：目标词汇/字数显示区 */
+.target-display { min-width: 150px; height: 100%; display: flex; align-items: center; padding: 0 10px; color: #333; font-weight: bold; font-size: 14px; background: #f9f9f9; border-right: 1px solid #d4d4d4; margin-right: 5px; }
+
 .formula-input { flex: 1; height: 100%; border: 1px solid #d4d4d4; padding: 0 5px; font-family: 'Calibri', sans-serif; font-size: 14px; outline: none; }
 .formula-input:focus { border-color: #217346; }
 
@@ -125,7 +129,7 @@ canvas { display: block; }
 <div class="ribbon-icon">🔄</div>
 <div class="ribbon-text">刷新视图</div>
 </div>
-<!-- 仅房主可见的按钮会动态控制显示，这里先放个占位 -->
+<!-- 仅房主可见的按钮会动态控制显示 -->
 <div class="ribbon-btn" id="host-btn" style="display:none; border: 1px solid #217346; background: #e6f4ea;" onclick="document.getElementById('host-input-modal').style.display='flex'">
 <div class="ribbon-icon">▶️</div>
 <div class="ribbon-text">开始计算</div>
@@ -136,6 +140,8 @@ canvas { display: block; }
 <div class="formula-bar">
 <div class="name-box" id="timer-display">C5</div>
 <div class="fx-icon">fx</div>
+<!-- 新增：显示词汇或字数提示 -->
+<div class="target-display" id="target-word-display">等待数据...</div>
 <input type="text" class="formula-input" id="msg-input" placeholder="在此输入数据 (按回车发送)..." onkeypress="if(event.keyCode===13) sendChat()">
 </div>
 
@@ -257,8 +263,8 @@ canvas { display: block; }
 
 <script>
 // --- 游戏配置 ---
-const DRAW_TIME = 10; // 绘画时间增加到60秒，方便实时观看
-const PREPARE_TIME = 1; // 准备时间
+const DRAW_TIME = 60; // 绘画时间
+const PREPARE_TIME = 3; // 准备时间
 
 // --- 状态变量 ---
 let peer = null;
@@ -425,17 +431,15 @@ document.getElementById('host-input-modal').style.display = 'flex';
 }
 }
 
-// --- 修改点：允许实时转发绘画数据 ---
+// 转发绘画数据
 if (data.type === 'draw' || data.type === 'clear') {
 const p2 = getP2();
 const isSenderP2 = (p2 && conn.peer === p2.id);
 
-// 只要是P2发的，或者游戏没开始（自由涂鸦），都处理
 if (!isGameRunning || isSenderP2) {
 if(data.type === 'draw') drawLocal(data.x, data.y, data.isStart);
 else ctx.clearRect(0,0,canvas.width, canvas.height);
 
-// 关键：无条件转发给其他人，让大家实时看到
 connections.forEach(c => {
 if(c.peer !== conn.peer) c.send(data);
 });
@@ -444,8 +448,6 @@ if(c.peer !== conn.peer) c.send(data);
 
 if (data.type === 'chat') {
 broadcast({ type: 'chat', name: data.name, msg: data.msg });
-// 实时猜词逻辑（如果需要实时猜，可以在这里加逻辑，目前保持画完再猜，或者你可以随时猜）
-// 这里为了简单，我们允许在绘画过程中猜
 if (isGameRunning || isGalleryPhase) checkGuess(data.msg, data.name);
 }
 }
@@ -525,12 +527,10 @@ handleClientData(galleryData);
 function checkGuess(msg, playerName) {
 gameWords.forEach((word, idx) => {
 if (solvedIndices.includes(idx)) return;
-// 简单包含匹配，实际可优化
 if (msg.includes(word)) {
 solvedIndices.push(idx);
 const winMsg = `✔️ ${playerName} 猜出了数据 ${idx+1}：【${word}】`;
 broadcast({ type: 'solve_word', index: idx, word: word, msg: winMsg });
-// 如果是画廊模式，更新卡片
 if(isGalleryPhase) updateGalleryItem(idx, word);
 addMsg('系统', winMsg, false, true);
 }
@@ -539,13 +539,22 @@ addMsg('系统', winMsg, false, true);
 
 function broadcastState(phase, word, time) {
 const data = { type: 'state_update', phase: phase, time: time, word: word, index: currentWordIndex + 1 };
-updateGameUI(data);
+
+// 生成字数提示掩码 (例如: "◯ ◯ ◯ ◯ (4字)")
+const wordLength = word.length;
+const mask = Array(wordLength).fill("◯").join(" ") + ` (${wordLength}字)`;
+
+updateGameUI(data); // 房主自己更新UI
+
 connections.forEach(conn => {
 const p = players.find(pl => pl.id === conn.peer);
 if (!p) return;
-// 只有P2能看到词，其他人看到 ???
-if (p.roleTag === 'P3' || p.roleTag === 'OBS') conn.send({...data, word: '???'});
-else conn.send(data);
+// 只有P2能看到真词，其他人看到掩码
+if (p.roleTag === 'P3' || p.roleTag === 'OBS') {
+conn.send({...data, word: mask});
+} else {
+conn.send(data);
+}
 });
 }
 
@@ -586,6 +595,7 @@ function renderGallery(images) {
 document.getElementById('canvas-wrapper').style.border = 'none'; // 隐藏绿框
 document.getElementById('canvas').style.display = 'none';
 document.getElementById('status-overlay').style.display = 'none';
+document.getElementById('target-word-display').innerText = "汇总阶段";
 
 const gView = document.getElementById('gallery-view');
 gView.style.display = 'flex';
@@ -633,20 +643,22 @@ const overlay = document.getElementById('status-overlay');
 const text = document.getElementById('overlay-text');
 const timer = document.getElementById('timer-display');
 const blocker = document.getElementById('blocker');
+const wordDisplay = document.getElementById('target-word-display');
 
 overlay.style.display = 'block';
 timer.innerText = data.time + 's';
 
-const amIDrawer = (myRoleTag === 'P2');
+// 更新顶部公式栏的词汇/字数显示
+wordDisplay.innerText = data.word;
 
 if (data.phase === 'prepare') {
-// 准备阶段：遮住画布，显示题目（仅P2可见题目，其他人???）
+// 准备阶段：遮住画布，显示题目
 text.innerHTML = `数据项 ${data.index}/5 <br>准备: <span style="font-weight:bold">${data.word}</span>`;
 blocker.style.display = 'block';
 } else if (data.phase === 'drawing') {
-// --- 修改点：绘图阶段，所有人都不遮挡 ---
-blocker.style.display = 'none'; // 移除白色遮挡
-overlay.style.display = 'none'; // 移除中间的文字提示框，以免挡住画
+// 绘图阶段：移除遮挡，让大家看画，但字数提示依然在公式栏显示
+blocker.style.display = 'none';
+overlay.style.display = 'none';
 timer.style.color = 'red';
 }
 }
@@ -739,4 +751,3 @@ canvas.addEventListener('touchend', stopDraw);
 </script>
 </body>
 </html>
-
