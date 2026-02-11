@@ -260,11 +260,10 @@ canvas { display: block; }
 <div style="color:white; margin-top:10px; font-size:14px; background:rgba(0,0,0,0.5); padding:5px 10px; border-radius:4px;">点击任意处关闭</div>
 </div>
 </div>
-
 <script>
 // --- 游戏配置 ---
-const DRAW_TIME = 10; // 绘画时间
-const PREPARE_TIME = 3; // 准备时间
+const DRAW_TIME = 60; // 绘画时间 (秒)
+const PREPARE_TIME = 5; // 准备时间 (秒)
 
 // --- 状态变量 ---
 let peer = null;
@@ -292,13 +291,13 @@ let isDrawing = false;
 function resizeCanvas() {
 const wrapper = document.getElementById('canvas-wrapper');
 if(wrapper) {
-// 确保画布大小匹配容器，避免拉伸
 canvas.width = wrapper.clientWidth;
 canvas.height = wrapper.clientHeight;
 }
 }
 window.addEventListener('resize', resizeCanvas);
-setTimeout(resizeCanvas, 100);
+// 稍微延迟以确保DOM完全加载
+setTimeout(resizeCanvas, 500);
 
 // --- 辅助函数 ---
 function getP2() { return players.find(p => p.roleTag === 'P2'); }
@@ -311,7 +310,6 @@ const peerConfig = {
 debug: 1,
 config: { 'iceServers': [{ url: 'stun:stun.l.google.com:19302' }] }
 };
-
 peer = customId ? new Peer(customId, peerConfig) : new Peer(null, peerConfig);
 
 peer.on('open', id => {
@@ -519,7 +517,8 @@ function startGalleryPhase() {
 isGalleryPhase = true;
 isGameRunning = false;
 broadcast({ type: 'chat', name: '系统', msg: '审核结束，查看汇总', isSys: true });
-const galleryData = { type: 'show_gallery', images: savedImages };
+// 修复：将 gameWords 发送给所有客户端，以便 P2/P3 显示
+const galleryData = { type: 'show_gallery', images: savedImages, words: gameWords };
 broadcast(galleryData, 'HOST');
 handleClientData(galleryData);
 }
@@ -539,17 +538,13 @@ addMsg('系统', winMsg, false, true);
 
 function broadcastState(phase, word, time) {
 const data = { type: 'state_update', phase: phase, time: time, word: word, index: currentWordIndex + 1 };
-
-// 生成字数提示掩码 (例如: "◯ ◯ ◯ ◯ (4字)")
 const wordLength = word.length;
 const mask = Array(wordLength).fill("◯").join(" ") + ` (${wordLength}字)`;
-
-updateGameUI(data); // 房主自己更新UI
+updateGameUI(data); 
 
 connections.forEach(conn => {
 const p = players.find(pl => pl.id === conn.peer);
 if (!p) return;
-// 只有P2能看到真词，其他人看到掩码
 if (p.roleTag === 'P3' || p.roleTag === 'OBS') {
 conn.send({...data, word: mask});
 } else {
@@ -578,7 +573,13 @@ if (data.type === 'chat') addMsg(data.name, data.msg, data.isSys, data.isWin);
 if (data.type === 'draw') drawLocal(data.x, data.y, data.isStart);
 if (data.type === 'clear') ctx.clearRect(0,0,canvas.width, canvas.height);
 if (data.type === 'state_update') updateGameUI(data);
-if (data.type === 'show_gallery') renderGallery(data.images);
+
+// 修复：接收并同步题目数据
+if (data.type === 'show_gallery') {
+    if(data.words) gameWords = data.words; 
+    renderGallery(data.images);
+}
+
 if (data.type === 'solve_word') {
 if(isGalleryPhase) updateGalleryItem(data.index, data.word);
 addMsg('系统', data.msg, false, true);
@@ -592,21 +593,41 @@ img.src = data.img;
 
 // --- 4. UI 更新 ---
 function renderGallery(images) {
-document.getElementById('canvas-wrapper').style.border = 'none'; // 隐藏绿框
-document.getElementById('canvas').style.display = 'none';
-document.getElementById('status-overlay').style.display = 'none';
-document.getElementById('target-word-display').innerText = "汇总阶段";
+  document.getElementById('canvas-wrapper').style.border = 'none';
+  document.getElementById('canvas').style.display = 'none';
+  document.getElementById('status-overlay').style.display = 'none';
+  document.getElementById('target-word-display').innerText = "汇总阶段";
 
-const gView = document.getElementById('gallery-view');
-gView.style.display = 'flex';
-gView.innerHTML = images.map((src, i) => `
-<div class="gallery-item" id="g-item-${i}" onclick="viewImage('${src}')" title="点击放大">
-<img src="${src}">
-<div class="answer" id="ans-${i}">
-${solvedIndices.includes(i) ? gameWords[i] : '#ERR!'}
-</div>
-</div>
-`).join('');
+  const gView = document.getElementById('gallery-view');
+  gView.style.display = 'flex';
+  
+  gView.innerHTML = images.map((src, i) => {
+    // 修复：获取题目文字和长度
+    const word = gameWords[i] || "";
+    const wordLen = word.length;
+    
+    // 修复：判断谁有权限看答案
+    // P1(房主) 或 P2(绘图员) 或 已经猜出来的题目 -> 显示答案
+    const canSeeAnswer = (myRoleTag === 'P1' || myRoleTag === 'P2' || solvedIndices.includes(i));
+    
+    let displayText;
+    if (canSeeAnswer) {
+        // P2 在这里可以看到完整名字
+        displayText = word;
+    } else {
+        // P3 (审核员) 或其他没猜出来的人 -> 显示字数提示
+        displayText = `<span style="color:#888; font-style:italic;">( ${wordLen} 个字 )</span>`;
+    }
+
+    return `
+    <div class="gallery-item" id="g-item-${i}" onclick="viewImage('${src}')" title="点击放大">
+    <img src="${src}">
+    <div class="answer" id="ans-${i}">
+      ${displayText}
+    </div>
+    </div>
+    `;
+  }).join('');
 }
 
 function viewImage(src) {
@@ -647,16 +668,12 @@ const wordDisplay = document.getElementById('target-word-display');
 
 overlay.style.display = 'block';
 timer.innerText = data.time + 's';
-
-// 更新顶部公式栏的词汇/字数显示
 wordDisplay.innerText = data.word;
 
 if (data.phase === 'prepare') {
-// 准备阶段：遮住画布，显示题目
 text.innerHTML = `数据项 ${data.index}/5 <br>准备: <span style="font-weight:bold">${data.word}</span>`;
 blocker.style.display = 'block';
 } else if (data.phase === 'drawing') {
-// 绘图阶段：移除遮挡，让大家看画，但字数提示依然在公式栏显示
 blocker.style.display = 'none';
 overlay.style.display = 'none';
 timer.style.color = 'red';
@@ -678,7 +695,7 @@ const val = input.value.trim();
 if(!val) return;
 if (isHost) {
 broadcast({ type: 'chat', name: myName, msg: val });
-if(isGameRunning || isGalleryPhase) checkGuess(val, myName); // 房主也能猜
+if(isGameRunning || isGalleryPhase) checkGuess(val, myName);
 addMsg(myName, val);
 } else {
 if(hostConn && hostConn.open) hostConn.send({ type: 'chat', msg: val, name: myName });
@@ -725,7 +742,7 @@ function stopDraw() { isDrawing = false; }
 function drawLocal(x, y, isStart) {
 const actualX = x * canvas.width;
 const actualY = y * canvas.height;
-ctx.lineWidth = 2; // 笔触细一点，像签字笔
+ctx.lineWidth = 2;
 ctx.lineCap = 'round';
 ctx.strokeStyle = '#000';
 if (isStart) { ctx.beginPath(); ctx.moveTo(actualX, actualY); }
@@ -751,4 +768,3 @@ canvas.addEventListener('touchend', stopDraw);
 </script>
 </body>
 </html>
-
